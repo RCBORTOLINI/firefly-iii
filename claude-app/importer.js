@@ -16,6 +16,9 @@
  *    (CSVFileProcessor::removeDuplicateLines) e o hash de conteúdo que o Firefly III
  *    usa para recusar duplicados (TransactionJournalFactory::hashArray).
  *
+ *    A leitura de planilhas .xlsx (descompactação do ZIP e leitura das células) foi escrita
+ *    para o Vagalume, sem biblioteca externa.
+ *
  * 2. ezbookkeeping (https://github.com/mayswind/ezbookkeeping)
  *    Copyright (c) 2020-2026 MaysWind (i@mayswind.net) — licença MIT, reproduzida abaixo.
  *    Daqui vêm: a leitura de OFX 1.x (SGML) e 2.x (XML) com o cabeçalho e a codificação
@@ -130,6 +133,9 @@
         }
         if (/^!(Type|Account)/i.test(head) || ext === 'qif') {
             return 'qif';
+        }
+        if (/^<(!doctype html|html|table|meta|head)\b/i.test(head) || (/<table\b/i.test(head) && (ext === 'xls' || ext === 'html' || ext === 'htm'))) {
+            return 'html';
         }
         return 'csv';
     }
@@ -716,6 +722,227 @@
         return {items, errors};
     }
 
+    // ----------------------------------------------------------------- Excel
+    // Leitura própria de .xlsx (um ZIP com XML), sem biblioteca externa: descompacta com o
+    // DecompressionStream do navegador e lê as células da primeira planilha com dados.
+    // As linhas saem no mesmo formato do CSV e seguem pelo mesmo mapeamento de colunas.
+
+    const isZip = (u8) => u8[0] === 0x50 && u8[1] === 0x4b && u8[2] === 0x03 && u8[3] === 0x04;
+    /** .xls antigo (formato binário do Excel 97-2003). */
+    const isOLE = (u8) => u8[0] === 0xd0 && u8[1] === 0xcf && u8[2] === 0x11 && u8[3] === 0xe0;
+
+    async function inflateRaw(data) {
+        const stream = new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+        return new Uint8Array(await new Response(stream).arrayBuffer());
+    }
+
+    /** Lê o diretório central do ZIP e devolve {nome: bytes} dos arquivos pedidos (ou todos). */
+    async function unzip(u8, wanted) {
+        const view = new DataView(u8.buffer, u8.byteOffset, u8.byteLength);
+        let eocd = -1;
+        for (let i = u8.length - 22; i >= Math.max(0, u8.length - 65557); i--) {
+            if (view.getUint32(i, true) === 0x06054b50) {
+                eocd = i;
+                break;
+            }
+        }
+        if (eocd < 0) {
+            throw new Error('O arquivo Excel está corrompido (ZIP incompleto).');
+        }
+        const count = view.getUint16(eocd + 10, true);
+        let p = view.getUint32(eocd + 16, true);
+        const out = {};
+        const utf8 = new TextDecoder('utf-8');
+        for (let n = 0; n < count; n++) {
+            if (view.getUint32(p, true) !== 0x02014b50) {
+                throw new Error('O arquivo Excel está corrompido (diretório do ZIP).');
+            }
+            const method = view.getUint16(p + 10, true);
+            const size = view.getUint32(p + 20, true);
+            const nameLen = view.getUint16(p + 28, true);
+            const extraLen = view.getUint16(p + 30, true);
+            const commentLen = view.getUint16(p + 32, true);
+            const local = view.getUint32(p + 42, true);
+            const name = utf8.decode(u8.subarray(p + 46, p + 46 + nameLen));
+            p += 46 + nameLen + extraLen + commentLen;
+            if (wanted && !wanted(name)) {
+                continue;
+            }
+            const start = local + 30 + view.getUint16(local + 26, true) + view.getUint16(local + 28, true);
+            const data = u8.subarray(start, start + size);
+            if (method === 0) {
+                out[name] = data;
+            } else if (method === 8) {
+                out[name] = await inflateRaw(data);
+            } else {
+                throw new Error('O arquivo Excel usa uma compressão que o app não lê.');
+            }
+        }
+        return out;
+    }
+
+    const xmlText = (bytes) => (bytes ? new TextDecoder('utf-8').decode(bytes) : '');
+    const attr = (tag, name) => {
+        const m = new RegExp('\\s' + name + '="([^"]*)"').exec(tag);
+        return m ? decodeEntities(m[1]) : null;
+    };
+
+    /** Textos de <t> dentro de um trecho (inclui texto com formatação, <r><t>…</t></r>). */
+    function joinT(xml) {
+        let s = '';
+        const re = /<t(?:\s[^>]*)?>([\s\S]*?)<\/t>/g;
+        let m;
+        while ((m = re.exec(xml))) {
+            s += decodeEntities(m[1]);
+        }
+        return s;
+    }
+
+    // Formatos numéricos de data embutidos no Excel (14 a 22 e 45 a 47).
+    const BUILTIN_DATE_FMTS = new Set([14, 15, 16, 17, 18, 19, 20, 21, 22, 45, 46, 47]);
+
+    /** Quais estilos de célula (índice em cellXfs) são datas. */
+    function dateStyles(stylesXml) {
+        const custom = {};
+        for (const m of stylesXml.matchAll(/<numFmt\s[^>]*>/g)) {
+            const code = String(attr(m[0], 'formatCode') || '').replace(/"[^"]*"|\[[^\]]*\]|\\./g, '');
+            custom[+attr(m[0], 'numFmtId')] = /[dmy]/i.test(code) && !/^[#0.,\s%]*$/.test(code);
+        }
+        const xfs = (/<cellXfs[^>]*>([\s\S]*?)<\/cellXfs>/.exec(stylesXml) || [])[1] || '';
+        return Array.from(xfs.matchAll(/<xf\s[^>]*?\/?>/g)).map((m) => {
+            const id = +attr(m[0], 'numFmtId');
+            return BUILTIN_DATE_FMTS.has(id) || !!custom[id];
+        });
+    }
+
+    /** Número de série do Excel → 'AAAA-MM-DD' (sistema 1900, ou 1904 se a pasta usar). */
+    function excelSerialToISO(serial, date1904) {
+        const days = Math.floor(serial) + (date1904 ? 1462 : 0);
+        const d = new Date(Date.UTC(1899, 11, 30) + days * 86400000);
+        return d.toISOString().slice(0, 10);
+    }
+
+    /** "C12" → 2 (índice da coluna). */
+    function colIndex(ref) {
+        const letters = /^[A-Z]+/.exec(ref || '');
+        let n = 0;
+        for (const ch of letters ? letters[0] : '') {
+            n = n * 26 + (ch.charCodeAt(0) - 64);
+        }
+        return n - 1;
+    }
+
+    /** Número da célula → texto que parseAmount lê sem ambiguidade (ponto decimal, 2 casas). */
+    function numberCell(v) {
+        const n = Number(v);
+        if (!Number.isFinite(n)) {
+            return String(v);
+        }
+        return Number.isInteger(n) ? String(n) : n.toFixed(2);
+    }
+
+    /** Lê um .xlsx: devolve [{name, rows}] com as planilhas na ordem da pasta de trabalho. */
+    async function readXLSX(bytes) {
+        const u8 = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+        if (typeof DecompressionStream === 'undefined') {
+            throw new Error('Este navegador não abre arquivos Excel. Atualize o iOS ou envie o extrato em CSV ou OFX.');
+        }
+        const files = await unzip(u8, (n) => /^xl\/(workbook\.xml|_rels\/workbook\.xml\.rels|sharedStrings\.xml|styles\.xml|worksheets\/[^/]+\.xml)$/.test(n));
+        const workbook = xmlText(files['xl/workbook.xml']);
+        if (!workbook) {
+            throw new Error('Esse arquivo não é uma planilha do Excel (.xlsx).');
+        }
+        const date1904 = /date1904="(1|true)"/.test(workbook);
+        const rels = {};
+        for (const m of xmlText(files['xl/_rels/workbook.xml.rels']).matchAll(/<Relationship\s[^>]*>/g)) {
+            rels[attr(m[0], 'Id')] = String(attr(m[0], 'Target') || '').replace(/^\/?(xl\/)?/, 'xl/');
+        }
+        const shared = Array.from(xmlText(files['xl/sharedStrings.xml']).matchAll(/<si>([\s\S]*?)<\/si>/g)).map((m) => joinT(m[1]));
+        const isDate = dateStyles(xmlText(files['xl/styles.xml']));
+        const sheets = [];
+        for (const m of workbook.matchAll(/<sheet\s[^>]*>/g)) {
+            const path = rels[attr(m[0], 'r:id')];
+            const xml = xmlText(files[path]);
+            const rows = [];
+            for (const rm of xml.matchAll(/<row\b[^>]*?(?:\/>|>([\s\S]*?)<\/row>)/g)) {
+                const row = [];
+                for (const cm of (rm[1] || '').matchAll(/<c\b([^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/g)) {
+                    const head = '<c' + cm[1] + '>';
+                    const inner = cm[2] || '';
+                    const type = attr(head, 't');
+                    const raw = (/<v>([\s\S]*?)<\/v>/.exec(inner) || [])[1];
+                    let value = '';
+                    if (type === 's') {
+                        value = shared[+raw] || '';
+                    } else if (type === 'inlineStr') {
+                        value = joinT(inner);
+                    } else if (type === 'str' || type === 'e') {
+                        value = raw != null ? decodeEntities(raw) : '';
+                    } else if (type === 'b') {
+                        value = raw === '1' ? 'VERDADEIRO' : 'FALSO';
+                    } else if (type === 'd') {
+                        value = raw ? C.fmtDate(raw.slice(0, 10)) : '';
+                    } else if (raw != null) {
+                        value = isDate[+(attr(head, 's') || 0)] ? C.fmtDate(excelSerialToISO(+raw, date1904)) : numberCell(raw);
+                    }
+                    const ci = attr(head, 'r') != null ? colIndex(attr(head, 'r')) : row.length;
+                    while (row.length < ci) {
+                        row.push('');
+                    }
+                    row[ci] = String(value).trim();
+                }
+                if (row.some((c) => c !== '')) {
+                    rows.push(row);
+                }
+            }
+            sheets.push({name: attr(m[0], 'name') || 'Planilha ' + (sheets.length + 1), rows});
+        }
+        if (!sheets.some((s) => s.rows.length)) {
+            throw new Error('A planilha está vazia.');
+        }
+        return sheets;
+    }
+
+    const ACCENT_MARKS = {acute: '\u0301', grave: '\u0300', circ: '\u0302', tilde: '\u0303', uml: '\u0308', cedil: '\u0327'};
+    const HTML_NAMED = {nbsp: ' ', ordm: 'º', ordf: 'ª', deg: '°', euro: '€', copy: '©', ndash: '–', mdash: '—', szlig: 'ß'};
+
+    /** Entidades HTML com nome (&oacute;, &ccedil;, &nbsp;…) mais as do XML. */
+    function decodeHTML(s) {
+        return decodeEntities(String(s)
+            .replace(/&([a-zA-Z])(acute|grave|circ|tilde|uml|cedil);/g, (all, ch, mark) => (ch + ACCENT_MARKS[mark]).normalize('NFC'))
+            .replace(/&([a-z]+);/g, (all, name) => (HTML_NAMED[name] != null ? HTML_NAMED[name] : all)));
+    }
+
+    /** Muitos bancos mandam ".xls" que na verdade é uma tabela HTML. Lê as linhas da tabela. */
+    function parseHTMLTable(text) {
+        const rows = [];
+        for (const tr of text.matchAll(/<tr\b[^>]*>([\s\S]*?)(?=<tr\b|<\/table|$)/gi)) {
+            const cells = Array.from(tr[1].matchAll(/<t[dh]\b[^>]*>([\s\S]*?)(?=<t[dh]\b|<\/tr|$)/gi)).map((c) => decodeHTML(c[1]
+                .replace(/<br\s*\/?>/gi, ' ').replace(/<[^>]+>/g, '')).replace(/\s+/g, ' ').trim());
+            if (cells.some((c) => c !== '')) {
+                rows.push(cells);
+            }
+        }
+        if (!rows.length) {
+            throw new Error('Não encontrei uma tabela de lançamentos no arquivo.');
+        }
+        return rows;
+    }
+
+    /**
+     * Planilhas de banco costumam ter título, agência e conta antes da tabela. A linha de
+     * cabeçalho é a primeira que tem uma coluna "Data" e outra de valor ou descrição.
+     */
+    function findHeaderRow(rows) {
+        for (let i = 0; i < Math.min(rows.length, 30); i++) {
+            const cells = rows[i].map(fold);
+            if (cells.some((c) => /^(data|date|dt)\b/.test(c)) && cells.some((c) => /valor|amount|descri|histor|lancamento|debito|credito|title/.test(c))) {
+                return i;
+            }
+        }
+        return 0;
+    }
+
     // ------------------------------------------------------- duplicados e hash
 
     async function sha256(text) {
@@ -964,6 +1191,7 @@
         DATE_FORMATS, parseDateWith, guessDateFormat,
         parseMarkupTree, parseOFX, parseOFXDate, parseQIF,
         parseCSV, detectDelimiter, ROLES, guessRoles, headerSignature, csvItems,
+        isZip, isOLE, unzip, readXLSX, excelSerialToISO, parseHTMLTable, findHeaderRow,
         sha256, importHash, markDuplicates, signedFor,
         inferPayment, cleanCounterparty, similarityKey, fold, STARTER_RULES,
     };

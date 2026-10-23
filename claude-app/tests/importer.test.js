@@ -184,3 +184,44 @@ test('contraparte limpa a partir da descrição do banco', () => {
     assert.equal(I.cleanCounterparty('COMPRA CARTAO DEB PADARIA BOM PAO'), 'Padaria Bom Pao');
     assert.equal(I.cleanCounterparty('12/10'), '');
 });
+
+test('Excel .xlsx (openpyxl): título antes da tabela, datas do Excel, números e texto', async () => {
+    const bytes = fixture('extrato-banco.xlsx');
+    assert.ok(I.isZip(bytes));
+    const sheets = await I.readXLSX(bytes);
+    assert.deepEqual(sheets.map((s) => s.name), ['Extrato', 'Resumo']);
+    const rows = sheets[0].rows;
+    const h = I.findHeaderRow(rows);
+    assert.equal(h, 2, 'pula título e agência/conta');
+    assert.deepEqual(rows[h], ['Data', 'Descrição', 'Documento', 'Valor (R$)', 'Saldo (R$)']);
+    assert.deepEqual(rows[h + 1], ['05/10/2026', 'PAGTO SALARIO EMPRESA EXEMPLO LTDA', '1001', '7500']);
+    assert.equal(rows[h + 2][3], '-45.90');
+    const roles = I.guessRoles(rows[h], rows.slice(h + 1, h + 6));
+    assert.deepEqual(roles, ['date_transaction', 'description', 'external-id', 'amount', '_ignore']);
+    const {items, errors} = I.csvItems(rows, {skipRows: h, hasHeader: true, dateFormat: 'dmy', roles});
+    assert.deepEqual(items.map((x) => x.amount), [750000, -4590, -8735, -12000, -3990]);
+    assert.equal(items[2].description, 'COMPRA CARTAO DEB FARMÁCIA SÃO JOÃO');
+    assert.equal(items[0].externalId, '1001');
+    assert.equal(errors.length, 1, 'linha de total sem data');
+});
+
+test('Excel .xlsx (montado à mão): textos compartilhados, formato de data próprio e datas de 1904', async () => {
+    const sheets = await I.readXLSX(fixture('fatura-cartao.xlsx'));
+    const rows = sheets[0].rows;
+    assert.deepEqual(rows[0], ['Data da compra', 'Estabelecimento', '', 'Valor']);
+    assert.deepEqual(rows[1], ['03/10/2026', 'Supermercado Bom Preço', '', '230.56']);
+    assert.deepEqual(rows[2], ['04/10/2026', 'IFD*IFOOD AGENCIA', '', '58']);
+    assert.deepEqual(rows[3], ['10/10/2026', 'Spotify', '', '21.90'], 'data com hora e número com erro de arredondamento');
+    assert.equal(I.excelSerialToISO(46298), '2026-10-03');
+});
+
+test('".xls" que é tabela HTML e .xls antigo', () => {
+    const text = I.decodeBytes(fixture('extrato-html.xls'));
+    assert.equal(I.detectFormat(text, 'extrato.xls'), 'html');
+    const rows = I.parseHTMLTable(text);
+    assert.equal(I.findHeaderRow(rows), 1);
+    assert.deepEqual(rows[1], ['Data', 'Histórico', 'Valor', 'Saldo']);
+    assert.deepEqual(rows[3], ['08/10/2026', 'PAG*UBER TRIP', '-45,90', '']);
+    assert.ok(I.isOLE(fixture('extrato-antigo.xls')));
+    assert.ok(!I.isOLE(fixture('extrato-banco.xlsx')));
+});

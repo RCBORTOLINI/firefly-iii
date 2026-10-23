@@ -1367,7 +1367,7 @@
             <p>Gerenciador de finanças pessoais que roda direto no Claude, sem servidor próprio.</p>
             <p>O Vagalume é uma adaptação do <b>Firefly III</b>, criado por James Cole e mantido por uma comunidade de colaboradores. Este app reaproveita o modelo de dados e a organização das telas do Firefly III (contas, lançamentos em partidas dobradas, orçamentos, categorias, contas recorrentes, cofrinhos, regras e relatórios), reescritos em JavaScript.</p>
             <p>Firefly III: Copyright © James Cole &lt;james@firefly-iii.org&gt; e colaboradores.<br>Modificações: Copyright © 2026 rcbortolini.</p>
-            <p>A importação de extratos reaproveita a lógica do <b>Firefly III Data Importer</b> (mapeamento de colunas do CSV, leitura de valores e detecção de duplicados), também de James Cole e colaboradores, sob a AGPL-3.0, e a leitura de OFX e QIF do <b>ezbookkeeping</b>, Copyright © 2020-2026 MaysWind, sob a licença MIT. O aviso de copyright e a licença MIT do ezbookkeeping estão no arquivo importer.js.</p>
+            <p>A importação de extratos reaproveita a lógica do <b>Firefly III Data Importer</b> (mapeamento de colunas do CSV e das planilhas Excel, leitura de valores e detecção de duplicados), também de James Cole e colaboradores, sob a AGPL-3.0, e a leitura de OFX e QIF do <b>ezbookkeeping</b>, Copyright © 2020-2026 MaysWind, sob a licença MIT. O aviso de copyright e a licença MIT do ezbookkeeping estão no arquivo importer.js.</p>
             <p>Este programa é software livre: você pode redistribuí-lo e/ou modificá-lo sob os termos da <b>GNU Affero General Public License</b>, versão 3 ou posterior, publicada pela Free Software Foundation. Ele é distribuído na esperança de que seja útil, mas sem nenhuma garantia.</p>
             </div>
             <div class="group">
@@ -1388,7 +1388,9 @@
         id: 'Já importado', conteudo: 'Já importado', arquivo: 'Repetido no arquivo', possivel: 'Possível duplicado',
     };
     const CAT_SOURCE = {regra: 'regra', historico: 'histórico', arquivo: 'do arquivo', manual: 'editada'};
-    const FORMAT_LABEL = {ofx: 'OFX', qif: 'QIF', csv: 'CSV'};
+    const FORMAT_LABEL = {ofx: 'OFX', qif: 'QIF', csv: 'CSV', xlsx: 'Excel', html: 'Excel (tabela)'};
+    /** Formatos em tabela, que passam pelo mapeamento de colunas. */
+    const isTabular = (f) => f === 'csv' || f === 'xlsx' || f === 'html';
     const DELIMS = [[';', 'Ponto e vírgula (;)'], [',', 'Vírgula (,)'], ['\t', 'Tabulação'], ['|', 'Barra vertical (|)']];
 
     const profileList = (kind) => Object.values(S.importProfiles).filter((p) => p.kind === kind).sort(byName);
@@ -1397,9 +1399,9 @@
     VIEWS.importar = () => {
         const imps = Object.values(S.imports).sort((a, b) => String(b.at || '').localeCompare(String(a.at || '')));
         const saved = profileList('csv').concat(profileList('ofx'));
-        let body = `<p class="muted">Envie o extrato do banco em OFX, CSV ou QIF. Você confere tudo numa prévia antes de importar, e lançamentos que já existem ficam de fora.</p>
+        let body = `<p class="muted">Envie o extrato do banco em OFX, Excel (.xlsx), CSV ou QIF. Você confere tudo numa prévia antes de importar, e lançamentos que já existem ficam de fora.</p>
             <label class="btn primary wide file-btn" for="arquivo-extrato">Escolher arquivo do extrato</label>
-            <input type="file" id="arquivo-extrato" accept=".ofx,.qfx,.csv,.txt,.qif" hidden>
+            <input type="file" id="arquivo-extrato" accept=".ofx,.qfx,.xlsx,.xls,.csv,.txt,.qif,.htm,.html" hidden>
             <p class="muted small">No iPhone, baixe o extrato no app ou no site do banco, de preferência em OFX, e depois escolha o arquivo pelo app Arquivos.</p>`;
         if (!S.settings.starterRules) {
             body += `<div class="group"><button type="button" class="row" data-act="regras-sugeridas"><span class="menu-ico">${ICON.regras}</span>
@@ -1409,7 +1411,7 @@
         if (saved.length) {
             body += section('Bancos salvos', `<div class="group">${saved.map((p) => `<button type="button" class="row" data-act="perfil-importacao" data-id="${esc(p.id)}">
                 <span class="row-main"><span class="row-title">${esc(p.name)}</span>
-                <span class="row-sub">${p.kind === 'csv' ? 'Mapeamento de colunas do CSV' : 'Conta do arquivo OFX'}${S.accounts[p.accountId] ? ' · vai para ' + esc(accName(p.accountId)) : ''}</span></span>${ICON.chevron}</button>`).join('')}</div>`);
+                <span class="row-sub">${p.kind === 'csv' ? 'Mapeamento de colunas (CSV ou Excel)' : 'Conta do arquivo OFX'}${S.accounts[p.accountId] ? ' · vai para ' + esc(accName(p.accountId)) : ''}</span></span>${ICON.chevron}</button>`).join('')}</div>`);
         }
         body += section('Importações', imps.length ? `<div class="group">${imps.map((x) => {
             const left = Object.values(S.tx).filter((t) => t.importId === x.id).length;
@@ -1436,18 +1438,44 @@
             toast('Cadastre uma conta antes de importar.');
             return;
         }
-        let text;
+        const imp = {fileName: file.name, opts: {applyRules: true, ignoreDuplicateLines: false}, qifOrder: 'dmy', stmtIndex: 0};
+        let bytes;
         try {
-            text = I.decodeBytes(await file.arrayBuffer());
+            bytes = new Uint8Array(await file.arrayBuffer());
         } catch (e) {
             toast('Não consegui ler esse arquivo.');
             return;
         }
-        const format = I.detectFormat(text, file.name);
-        const imp = {fileName: file.name, text, format, opts: {applyRules: true, ignoreDuplicateLines: false}, qifOrder: 'dmy', stmtIndex: 0};
+        if (I.isOLE(bytes)) {
+            toast('Este é um .xls antigo (Excel 97-2003), que o app não lê. Abra no Numbers ou no Excel, exporte como .xlsx ou CSV e envie de novo.');
+            return;
+        }
+        let text = '';
         try {
-            if (format === 'csv') {
-                setupCsv(imp);
+            if (I.isZip(bytes)) {
+                imp.format = 'xlsx';
+                imp.sheets = (await I.readXLSX(bytes)).filter((sh) => sh.rows.length);
+                imp.sheetIndex = 0;
+                setupTable(imp, imp.sheets[0].rows, null);
+                ui.imp = imp;
+                go('importarColunas');
+                return;
+            }
+            text = I.decodeBytes(bytes);
+        } catch (e) {
+            toast(e.message || 'Não consegui ler esse arquivo.');
+            return;
+        }
+        const format = I.detectFormat(text, file.name);
+        Object.assign(imp, {text, format});
+        try {
+            if (format === 'csv' || format === 'html') {
+                if (format === 'csv') {
+                    const delimiter = I.detectDelimiter(text);
+                    setupTable(imp, I.parseCSV(text, delimiter), delimiter);
+                } else {
+                    setupTable(imp, I.parseHTMLTable(text), null);
+                }
                 ui.imp = imp;
                 go('importarColunas');
                 return;
@@ -1468,29 +1496,33 @@
         go('importarPrevia');
     }
 
-    function setupCsv(imp) {
-        const delimiter = I.detectDelimiter(imp.text);
-        const rows = I.parseCSV(imp.text, delimiter);
+    /**
+     * Prepara uma tabela (CSV, Excel ou HTML) para o mapeamento de colunas. Acha a linha de
+     * cabeçalho (bancos põem título e dados da conta antes) e usa o mapeamento salvo do banco
+     * quando o cabeçalho é o mesmo.
+     */
+    function setupTable(imp, rows, delimiter) {
         if (rows.length < 2) {
-            throw new Error('O CSV não tem linhas suficientes.');
+            throw new Error('O arquivo não tem linhas suficientes.');
         }
-        const sig = I.headerSignature(rows[0]);
-        const saved = profileList('csv').find((p) => p.signature === sig);
+        const h = I.findHeaderRow(rows);
+        const saved = profileList('csv').find((p) => p.signature === I.headerSignature(rows[h]));
         imp.csv = {rows, delimiter, matched: saved ? saved.name : null};
-        imp.csv.profile = saved ? clone(saved) : csvGuessProfile(rows, delimiter, imp.fileName);
-        if (saved && saved.delimiter !== delimiter) {
+        imp.csv.profile = saved ? Object.assign(clone(saved), {skipRows: h, hasHeader: true}) : tableGuessProfile(rows, delimiter, imp.fileName);
+        if (saved && delimiter && saved.delimiter && saved.delimiter !== delimiter) {
             imp.csv.rows = I.parseCSV(imp.text, saved.delimiter);
         }
     }
 
-    function csvGuessProfile(rows, delimiter, fileName) {
-        const first = rows[0];
-        const hasHeader = !first.some((c) => Number.isFinite(I.parseAmount(c)) && /\d/.test(c)) || first.some((c) => /[a-zà-ú]{4}/i.test(c) && !/\d/.test(c));
-        const data = rows.slice(hasHeader ? 1 : 0, (hasHeader ? 1 : 0) + 12);
+    function tableGuessProfile(rows, delimiter, fileName) {
+        const h = I.findHeaderRow(rows);
+        const first = rows[h];
+        const hasHeader = h > 0 || !first.some((c) => Number.isFinite(I.parseAmount(c)) && /\d/.test(c)) || first.some((c) => /[a-zà-ú]{4}/i.test(c) && !/\d/.test(c));
+        const data = rows.slice(h + (hasHeader ? 1 : 0), h + (hasHeader ? 1 : 0) + 12);
         const roles = I.guessRoles(hasHeader ? first : null, data);
         const dateCol = roles.indexOf('date_transaction');
         return {
-            kind: 'csv', name: String(fileName || 'Banco').replace(/\.[^.]+$/, ''), delimiter, hasHeader, skipRows: 0,
+            kind: 'csv', name: String(fileName || 'Banco').replace(/\.[^.]+$/, ''), delimiter, hasHeader, skipRows: h,
             dateFormat: dateCol >= 0 ? I.guessDateFormat(data.map((r) => r[dateCol])) : 'dmy',
             roles, idColumns: [],
         };
@@ -1506,7 +1538,7 @@
                 const card = ownAccounts().find((a) => a.kind === 'cartao');
                 id = card ? card.id : null;
             }
-        } else if (imp.format === 'csv') {
+        } else if (isTabular(imp.format)) {
             const p = imp.csv.profile;
             id = p.accountId && S.accounts[p.accountId] ? p.accountId : null;
         }
@@ -1525,7 +1557,7 @@
         const imp = ui.imp;
         let items;
         imp.errors = [];
-        if (imp.format === 'csv') {
+        if (isTabular(imp.format)) {
             const r = I.csvItems(imp.csv.rows, imp.csv.profile);
             items = r.items;
             imp.errors = r.errors;
@@ -1542,7 +1574,7 @@
     VIEWS.importarColunas = () => {
         const imp = ui.imp;
         if (!imp || !imp.csv) {
-            return {title: 'Colunas do CSV', body: empty('Escolha um arquivo primeiro.', '<button type="button" class="btn primary" data-act="voltar">Voltar</button>')};
+            return {title: 'Colunas', body: empty('Escolha um arquivo primeiro.', '<button type="button" class="btn primary" data-act="voltar">Voltar</button>')};
         }
         const {rows, profile} = imp.csv;
         const start = profile.skipRows || 0;
@@ -1568,9 +1600,10 @@
             <p class="muted">${esc(imp.fileName)} · diga o que cada coluna contém. O mapeamento fica salvo para os próximos arquivos deste banco.</p>
             <div class="group form">
                 ${field('Nome do banco', inText('imp-name', profile.name, 'placeholder="Ex.: Banco X conta corrente"'))}
-                ${field('Separador', sel('imp-delim', DELIMS, profile.delimiter))}
+                ${imp.format === 'csv' ? field('Separador', sel('imp-delim', DELIMS, profile.delimiter)) : ''}
+                ${imp.sheets && imp.sheets.length > 1 ? field('Planilha', sel('imp-sheet', imp.sheets.map((sh, i) => [i, sh.name]), imp.sheetIndex)) : ''}
                 ${sw('imp-header', 'Primeira linha é cabeçalho', profile.hasHeader)}
-                ${field('Pular linhas no topo', sel('imp-skip', [0, 1, 2, 3, 4, 5, 6, 8, 10].map((n) => [n, String(n)]), start))}
+                ${field('Pular linhas no topo', sel('imp-skip', Array.from(new Set([0, 1, 2, 3, 4, 5, 6, 8, 10, start])).sort((x, y) => x - y).map((n) => [n, String(n)]), start))}
                 ${field('Formato da data', sel('imp-datefmt', Object.entries(I.DATE_FORMATS), profile.dateFormat))}
             </div>
             <div class="cols">${cols}</div>
@@ -1580,7 +1613,7 @@
             <button type="button" class="btn primary wide" data-act="imp-previa"${!hasDate || !hasAmount || !check.items.length ? ' disabled' : ''}>Ver prévia</button>
             </div>`;
         return {
-            title: 'Colunas do CSV', body,
+            title: imp.format === 'csv' ? 'Colunas do CSV' : 'Colunas da planilha', body,
             after: (root) => {
                 const box = $('#imp-cols', root);
                 box.addEventListener('input', (e) => {
@@ -1593,8 +1626,13 @@
                     if (t.id === 'f-imp-delim') {
                         profile.delimiter = t.value;
                         imp.csv.rows = I.parseCSV(imp.text, t.value);
-                        const g = csvGuessProfile(imp.csv.rows, t.value, profile.name);
-                        Object.assign(profile, {roles: g.roles, hasHeader: g.hasHeader, dateFormat: g.dateFormat, idColumns: []});
+                        const g = tableGuessProfile(imp.csv.rows, t.value, profile.name);
+                        Object.assign(profile, {roles: g.roles, hasHeader: g.hasHeader, skipRows: g.skipRows, dateFormat: g.dateFormat, idColumns: []});
+                    } else if (t.id === 'f-imp-sheet') {
+                        imp.sheetIndex = +t.value;
+                        const name = profile.name;
+                        setupTable(imp, imp.sheets[imp.sheetIndex].rows, null);
+                        imp.csv.profile.name = imp.csv.matched ? imp.csv.profile.name : name;
                     } else if (t.id === 'f-imp-header') {
                         profile.hasHeader = t.checked;
                     } else if (t.id === 'f-imp-skip') {
@@ -1798,7 +1836,7 @@
             id: importId, date: today(), at: nowISO(), fileName: imp.fileName, format: imp.format, accountId: imp.accountId, count: n,
         };
         // Salva o mapeamento deste banco para a próxima vez.
-        if (imp.format === 'csv') {
+        if (isTabular(imp.format)) {
             const p = imp.csv.profile;
             const header = p.hasHeader ? imp.csv.rows[p.skipRows || 0] : null;
             const saved = Object.assign({}, p, {

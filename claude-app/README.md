@@ -30,7 +30,16 @@ os relatórios mostram as despesas por forma de pagamento.
 ## Importação de extratos
 
 Em **Mais → Importar extrato** (ou no ícone de envio da tela Lançamentos) você envia um arquivo OFX,
-CSV ou QIF pelo celular, confere uma prévia e escolhe a conta de destino antes de importar.
+Excel (.xlsx), CSV ou QIF pelo celular, confere uma prévia e escolhe a conta de destino antes de importar.
+
+- **Excel**: o `.xlsx` é lido no próprio navegador, sem biblioteca externa (descompactação nativa
+  com `DecompressionStream`, disponível no Safari do iOS 16.4 em diante). Datas do Excel (inclusive
+  no sistema 1904), números, textos compartilhados e várias planilhas na mesma pasta são suportados.
+  A linha de cabeçalho é achada sozinha quando o banco põe título e dados da conta antes da tabela.
+  ".xls" que na verdade é uma tabela HTML (comum em bancos brasileiros) também é lido. O `.xls`
+  binário antigo (Excel 97-2003) não: o app pede para exportar como `.xlsx` ou CSV. A SheetJS não
+  foi usada porque a versão disponível nas CDNs permitidas (0.18.5) tem falhas de segurança
+  conhecidas na leitura de arquivos.
 
 - **Mapeamento do CSV**: cada coluna recebe um papel (data, descrição, valor com sinal, valor
   invertido, débito, crédito, indicador D/C, favorecido, categoria, identificador…), como no
@@ -58,7 +67,7 @@ Arquivos de exemplo usados nos testes ficam em `tests/fixtures/`.
 |---|---|
 | `index.html` | Estrutura da página e estilos (visual de app de iPhone, tema claro e escuro) |
 | `core.js` | Regras de negócio puras: dinheiro, datas, saldos, orçamentos, contas recorrentes, recorrências, regras, relatórios, backup |
-| `importer.js` | Leitura de OFX, QIF e CSV, mapeamento de colunas, duplicados e prévia da importação |
+| `importer.js` | Leitura de OFX, QIF, CSV e Excel, mapeamento de colunas, duplicados e prévia da importação |
 | `app.js` | Telas, formulários, gráficos e gravação no banco de dados do Claude |
 | `tests/` | Testes — rode com `node --test claude-app/tests/core.test.js claude-app/tests/importer.test.js` |
 
@@ -74,8 +83,8 @@ exemplo e não salva nada.
 
 ## Diferenças em relação ao Firefly III
 
-Ficaram de fora: multimoeda e câmbio, lançamentos divididos, anexos, webhooks, e-mails, importação
-de extratos, vários usuários, API e grupos de regras. Os cofrinhos ficam ligados a uma conta só.
+Ficaram de fora: multimoeda e câmbio, lançamentos divididos, anexos, webhooks, e-mails, vários
+usuários, API e grupos de regras. Os cofrinhos ficam ligados a uma conta só.
 Lançamentos recorrentes são criados quando você abre o app, não por cron.
 
 ## Licenças e créditos

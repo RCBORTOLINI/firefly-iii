@@ -151,7 +151,7 @@ a { color: var(--accent); }
   display: flex; align-items: center; gap: 12px; width: 100%; min-height: 48px; box-sizing: border-box;
   padding: 10px 14px; border: 0; background: none; text-align: left; position: relative; color: inherit; text-decoration: none;
 }
-.row + .row::before, .hbar + .hbar::before, .field + .field::before {
+.row + .row::before, .hbar + .hbar::before, .field ~ .field::before {
   content: ""; position: absolute; top: 0; left: 14px; right: 0; height: 1px; background: var(--sep); transform: scaleY(.6);
 }
 button.row:active, a.row:active, label.row:active { background: var(--press); }
@@ -296,7 +296,14 @@ button.row:active, a.row:active, label.row:active { background: var(--press); }
   flex: 1; min-width: 0; border: 0; background: transparent; text-align: right; font-size: 16px; color: var(--fg); padding: 8px 0; outline: none;
 }
 .field select { text-align-last: right; appearance: none; -webkit-appearance: none; color: var(--accent); cursor: pointer; }
-.field input[type="date"] { -webkit-appearance: none; appearance: none; min-height: 1.4em; display: flex; justify-content: flex-end; }
+.date-in { flex: 1; min-width: 0; display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
+.date-in input[data-date] { flex: 1; min-width: 0; max-width: 9.5em; font-variant-numeric: tabular-nums; }
+.date-pick { position: relative; width: 32px; height: 32px; display: grid; place-items: center; color: var(--accent); flex: none; border-radius: 8px; }
+.date-pick .ico { width: 20px; height: 20px; }
+.date-pick input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; margin: 0; padding: 0; border: 0; cursor: pointer; }
+.date-pick:has(input:focus-visible) { outline: 2px solid var(--accent); }
+.quick-dates { display: flex; justify-content: flex-end; gap: 8px; padding: 0 14px 10px; }
+.quick-dates .chip { border: 0; font-size: 13px; padding: 5px 12px; cursor: pointer; }
 .field input::placeholder, .field textarea::placeholder { color: var(--fg-3); }
 .field:has(textarea) { flex-direction: column; align-items: stretch; gap: 2px; padding-block: 10px; }
 .field textarea { border: 0; background: transparent; font-size: 16px; resize: vertical; outline: none; padding: 0; min-height: 2.6em; }

@@ -156,21 +156,32 @@
         return addMonths(mk + '-01', n).slice(0, 7);
     }
 
+    /** Datas sempre no padrão brasileiro: 'dd/mm/aaaa'; 'curta' = 'dd/mm'; 'dia' = 'sexta-feira, dd/mm/aaaa'. */
     function fmtDate(s, style) {
         if (!isISODate(s)) {
             return '';
         }
         const [y, m, d] = s.split('-').map(Number);
+        const full = pad(d) + '/' + pad(m) + '/' + y;
         switch (style) {
             case 'curta':
-                return d + ' ' + MESES_CURTOS[m - 1];
-            case 'longa':
-                return d + ' de ' + MESES[m - 1] + ' de ' + y;
+                return pad(d) + '/' + pad(m);
             case 'dia':
-                return DIAS_SEMANA[parseISO(s).getUTCDay()] + ', ' + d + ' de ' + MESES[m - 1];
+                return DIAS_SEMANA[parseISO(s).getUTCDay()] + ', ' + full;
             default:
-                return pad(d) + '/' + pad(m) + '/' + y;
+                return full;
         }
+    }
+
+    /** 'dd/mm/aaaa' (ou 'dd/mm/aa') → 'AAAA-MM-DD'. Devolve null se a data não existe. */
+    function parseDateBR(str) {
+        const m = /^\s*(\d{1,2})\/(\d{1,2})\/(\d{2}|\d{4})\s*$/.exec(String(str || ''));
+        if (!m) {
+            return null;
+        }
+        const y = m[3].length === 2 ? 2000 + +m[3] : +m[3];
+        const iso = y + '-' + pad(+m[2]) + '-' + pad(+m[1]);
+        return isISODate(iso) ? iso : null;
     }
 
     function fmtMonth(mk, style) {
@@ -202,6 +213,29 @@
     const isOwn = (acc) => isOwnGroup(groupOf(acc));
     /** Contas em que o saldo representa algo devido (mostrado como "devendo"). */
     const isDebtLike = (acc) => !!acc && (groupOf(acc) === 'passivo' || acc.kind === 'cartao');
+
+    /** Formas de pagamento usadas no Brasil. */
+    const PAYMENT_METHODS = {
+        pix: {label: 'Pix'},
+        debito: {label: 'Débito'},
+        credito: {label: 'Crédito'},
+        dinheiro: {label: 'Dinheiro'},
+        boleto: {label: 'Boleto'},
+    };
+
+    /** Forma de pagamento sugerida pela conta de origem (cartão → crédito, dinheiro → dinheiro). */
+    function suggestPayment(acc) {
+        if (!acc) {
+            return null;
+        }
+        if (acc.kind === 'cartao') {
+            return 'credito';
+        }
+        if (acc.kind === 'dinheiro') {
+            return 'dinheiro';
+        }
+        return null;
+    }
 
     const TX_TYPES = {
         retirada: {label: 'Despesa', plural: 'Despesas'},
@@ -355,6 +389,9 @@
             n.budgetId = null;
             n.billId = null;
         }
+        if (!PAYMENT_METHODS[n.paymentMethod]) {
+            n.paymentMethod = null;
+        }
         for (const k of ['categoryId', 'budgetId', 'billId', 'recurrenceId']) {
             if (!n[k]) {
                 n[k] = null;
@@ -402,7 +439,7 @@
     function summarize(state, from, to) {
         const r = {
             income: 0, expense: 0, transfers: 0, count: 0,
-            byCategory: {}, byCategoryIncome: {}, byBudget: {}, byExpenseAccount: {}, byRevenueAccount: {}, byTag: {},
+            byCategory: {}, byCategoryIncome: {}, byBudget: {}, byExpenseAccount: {}, byRevenueAccount: {}, byTag: {}, byPayment: {},
         };
         const add = (map, k, v) => {
             map[k || ''] = (map[k || ''] || 0) + v;
@@ -417,6 +454,7 @@
                 add(r.byCategory, t.categoryId, t.amount);
                 add(r.byBudget, t.budgetId, t.amount);
                 add(r.byExpenseAccount, t.dest, t.amount);
+                add(r.byPayment, t.paymentMethod, t.amount);
                 for (const tag of t.tags || []) {
                     add(r.byTag, tag, t.amount);
                 }
@@ -625,6 +663,7 @@
             budgetId: rec.budgetId || null,
             billId: rec.billId || null,
             tags: (rec.tags || []).slice(),
+            paymentMethod: rec.paymentMethod || null,
             notes: rec.notes || '',
             recurrenceId: rec.id,
             createdAt: new Date().toISOString(),
@@ -649,6 +688,7 @@
         destino_e: {label: 'Conta de destino é', input: 'texto', test: (t, v, c) => lc(c.accName(t.dest)) === lc(v)},
         destino_contem: {label: 'Conta de destino contém', input: 'texto', test: (t, v, c) => lc(c.accName(t.dest)).includes(lc(v))},
         tipo_e: {label: 'Tipo é', input: 'tipo', test: (t, v) => t.type === v},
+        pagamento_e: {label: 'Forma de pagamento é', input: 'pagamento', test: (t, v) => t.paymentMethod === v},
         categoria_e: {label: 'Categoria é', input: 'categoria', test: (t, v) => t.categoryId === v},
         sem_categoria: {label: 'Não tem categoria', input: null, test: (t) => !t.categoryId},
         orcamento_e: {label: 'Orçamento é', input: 'orcamento', test: (t, v) => t.budgetId === v},
@@ -676,6 +716,9 @@
             if (t.type === 'retirada') {
                 t.billId = v || null;
             }
+        }},
+        definir_pagamento: {label: 'Definir forma de pagamento', input: 'pagamento', apply: (t, v) => {
+            t.paymentMethod = PAYMENT_METHODS[v] ? v : null;
         }},
         adicionar_tag: {label: 'Adicionar tag', input: 'texto', apply: (t, v) => {
             t.tags = cleanTags((t.tags || []).concat([v]));
@@ -821,9 +864,9 @@
 
     return {
         fmtMoney, fmtMoneyCompact, parseMoney, moneyToInput,
-        MESES, MESES_CURTOS, DIAS_SEMANA, isISODate, todayISO, addDays, addMonths, diffDays,
+        MESES, MESES_CURTOS, DIAS_SEMANA, isISODate, parseDateBR, todayISO, addDays, addMonths, diffDays,
         monthKey, monthStart, monthEnd, shiftMonth, fmtDate, fmtMonth, daysInMonth,
-        ACCOUNT_KINDS, groupOf, isOwn, isDebtLike, TX_TYPES, inferType, newId, emptyState,
+        ACCOUNT_KINDS, groupOf, isOwn, isDebtLike, PAYMENT_METHODS, suggestPayment, TX_TYPES, inferType, newId, emptyState,
         findAccountByName, computeBalances, netWorth, dailyBalance,
         txSort, txInRange, cleanTags, normalizeTx, validateTx,
         summarize, monthlySeries, topEntries,

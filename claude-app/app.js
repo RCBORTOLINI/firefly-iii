@@ -454,7 +454,7 @@
         }
         const cat = t.categoryId && S.categories[t.categoryId];
         const route = `${esc(accName(t.source))} → ${esc(accName(t.dest))}`;
-        const meta = [cat ? esc(cat.name) : null].concat((t.tags || []).map((x) => '#' + esc(x))).filter(Boolean).join(' · ');
+        const meta = [t.paymentMethod ? esc(payLabel(t.paymentMethod)) : null, cat ? esc(cat.name) : null].concat((t.tags || []).map((x) => '#' + esc(x))).filter(Boolean).join(' · ');
         return `<button type="button" class="row tx" data-act="editar-lancamento" data-id="${esc(t.id)}">
             <span class="tx-ico ${t.type}" title="${esc(C.TX_TYPES[t.type] ? C.TX_TYPES[t.type].label : '')}">${ICON[t.type] || ''}</span>
             <span class="row-main"><span class="row-title">${esc(t.description)}</span>
@@ -739,7 +739,7 @@
         let body = monthNav('month', mk);
         body += `<div class="hero"><span class="hero-label">Patrimônio líquido</span>
             <span class="hero-value ${nw < 0 ? 'neg' : ''}">${signedMoney(nw)}</span>
-            <span class="hero-sub">${isCur ? 'hoje, ' + esc(C.fmtDate(t, 'longa')) : 'em ' + esc(C.fmtDate(end, 'longa'))}</span></div>`;
+            <span class="hero-sub">${isCur ? 'hoje, ' + esc(C.fmtDate(t)) : 'em ' + esc(C.fmtDate(end))}</span></div>`;
         body += tiles([
             {label: 'Receitas', value: money(sum.income)},
             {label: 'Despesas', value: money(sum.expense)},
@@ -814,7 +814,7 @@
             return C.txInRange(S, null, null, (t) => typeOk(t) && [
                 t.description, accName(t.source), accName(t.dest), t.notes,
                 t.categoryId && S.categories[t.categoryId] ? S.categories[t.categoryId].name : '',
-                (t.tags || []).join(' '), C.moneyToInput(t.amount),
+                (t.tags || []).join(' '), C.moneyToInput(t.amount), payLabel(t.paymentMethod),
             ].join(' ').toLocaleLowerCase('pt-BR').includes(q));
         }
         return C.txInRange(S, C.monthStart(ui.month), C.monthEnd(ui.month), typeOk);
@@ -1239,6 +1239,9 @@
         if (input === 'tipo') {
             return C.TX_TYPES[v] ? C.TX_TYPES[v].label.toLowerCase() : '?';
         }
+        if (input === 'pagamento') {
+            return esc(payLabel(v) || '?');
+        }
         if (input === 'categoria') {
             return S.categories[v] ? esc(S.categories[v].name) : '(categoria apagada)';
         }
@@ -1297,6 +1300,7 @@
             if (budgets.length) {
                 body += section('Orçamentos', `<div class="group">${budgets.map(budgetRow).join('')}</div>`);
             }
+            body += section('Despesas por forma de pagamento', hbars(C.topEntries(sum.byPayment, 6), (e) => payLabel(e.id) || 'Não informada', null));
             body += section('Para quem você mais pagou', hbars(C.topEntries(sum.byExpenseAccount, 8), (e) => (e.id === '__outros' ? `Outros (${e.count})` : accName(e.id)), 'conta'));
             body += section('De onde veio o dinheiro', hbars(C.topEntries(sum.byRevenueAccount, 6), (e) => (e.id === '__outros' ? `Outros (${e.count})` : accName(e.id)), 'conta'));
         } else {
@@ -1324,6 +1328,7 @@
                 ${series.map((m) => `<tr><td>${esc(C.fmtMonth(m.month, 'curta'))}</td><td>${money(m.income)}</td><td>${money(m.expense)}</td><td class="${amountClass(m.net)}">${signedMoney(m.net)}</td></tr>`).join('')}
                 </tbody></table></div>`);
             body += section('Despesas por categoria', hbars(C.topEntries(sumY.byCategory, 10), catName, null));
+            body += section('Despesas por forma de pagamento', hbars(C.topEntries(sumY.byPayment, 6), (e) => payLabel(e.id) || 'Não informada', null));
         }
         return {title: 'Relatórios', large: true, body};
     };
@@ -1528,18 +1533,63 @@
     const field = (label, input, o) => `<label class="field${o && o.cls ? ' ' + o.cls : ''}"${o && o.id ? ` id="${o.id}"` : ''}${o && o.hidden ? ' hidden' : ''}><span class="field-label">${label}</span>${input}</label>`;
     const inText = (name, value, attrs) => `<input id="f-${name}" name="${name}" value="${esc(value)}" autocomplete="off" ${attrs || ''}>`;
     const inMoney = (name, cents, attrs) => `<input id="f-${name}" name="${name}" inputmode="decimal" placeholder="0,00" autocomplete="off" value="${cents == null ? '' : esc(C.moneyToInput(cents))}" ${attrs || ''}>`;
-    const inDate = (name, value) => `<input type="date" id="f-${name}" name="${name}" value="${esc(value || '')}">`;
+    /** Data digitada como dd/mm/aaaa; o ícone abre o calendário do aparelho. */
+    const inDate = (name, value) => `<span class="date-in"><input id="f-${name}" name="${name}" data-date inputmode="numeric" placeholder="dd/mm/aaaa" maxlength="10" autocomplete="off" value="${esc(value ? C.fmtDate(value) : '')}">
+        <span class="date-pick">${ICON.bills}<input type="date" tabindex="-1" aria-label="Escolher no calendário" data-pick="${name}" value="${esc(value || '')}"></span></span>`;
+    const quickDates = (name) => `<div class="quick-dates"><button type="button" class="chip info" data-setdate="${name}" data-d="0">Hoje</button><button type="button" class="chip info" data-setdate="${name}" data-d="-1">Ontem</button></div>`;
     const opt = (v, label, cur) => `<option value="${esc(v)}"${String(v) === String(cur == null ? '' : cur) ? ' selected' : ''}>${esc(label)}</option>`;
     const sel = (name, options, cur, attrs) => `<select id="f-${name}" name="${name}" ${attrs || ''}>${options.map(([v, l]) => opt(v, l, cur)).join('')}</select>`;
     const sw = (name, label, on) => `<label class="field switch"><span class="field-label">${label}</span><input type="checkbox" role="switch" id="f-${name}" name="${name}"${on ? ' checked' : ''}></label>`;
     const area = (name, value, ph) => `<textarea id="f-${name}" name="${name}" rows="2" placeholder="${esc(ph || '')}">${esc(value || '')}</textarea>`;
     const datalist = (id, values) => `<datalist id="${id}">${values.map((v) => `<option value="${esc(v)}"></option>`).join('')}</datalist>`;
-    const val = (form, name) => (form.elements[name] ? form.elements[name].value : '');
+    /** Valor de um campo. Campos de data devolvem 'AAAA-MM-DD' (ou 'data-invalida'). */
+    const val = (form, name) => {
+        const el = form.elements[name];
+        if (!el) {
+            return '';
+        }
+        if (el.dataset && el.dataset.date !== undefined) {
+            const v = el.value.trim();
+            return v ? C.parseDateBR(v) || 'data-invalida' : '';
+        }
+        return el.value;
+    };
     const checked = (form, name) => !!(form.elements[name] && form.elements[name].checked);
 
     function ownOptions(includeEmpty) {
         const list = ownAccounts().map((a) => [a.id, a.name]);
         return includeEmpty ? [['', '—']].concat(list) : list;
+    }
+
+    const payOptions = () => [['', 'Não informada']].concat(Object.entries(C.PAYMENT_METHODS).map(([k, p]) => [k, p.label]));
+    const payLabel = (k) => (C.PAYMENT_METHODS[k] ? C.PAYMENT_METHODS[k].label : '');
+
+    /** Forma de pagamento sugerida para uma conta: pelo tipo dela ou pelo último uso. */
+    function paymentFor(accId) {
+        const acc = S.accounts[accId];
+        const byKind = C.suggestPayment(acc);
+        if (byKind) {
+            return byKind;
+        }
+        const last = C.txInRange(S, null, null, (t) => (t.source === accId || t.dest === accId) && t.paymentMethod)[0];
+        return last ? last.paymentMethod : '';
+    }
+
+    /** Ao trocar a conta, sugere a forma de pagamento (cartão → crédito). */
+    function bindPaymentSuggest(form) {
+        const pick = () => {
+            const type = val(form, 'type');
+            const accId = type === 'retirada' ? val(form, 'd_src') : type === 'deposito' ? val(form, 'r_dst') : val(form, 't_src');
+            const sug = paymentFor(accId);
+            if (sug) {
+                form.elements.paymentMethod.value = sug;
+            }
+        };
+        ['d_src', 'r_dst', 't_src'].forEach((n) => form.elements[n] && form.elements[n].addEventListener('change', pick));
+        $$('input[name="type"]', form).forEach((r) => r.addEventListener('change', pick));
+        if (!form.elements.paymentMethod.value) {
+            pick();
+        }
     }
 
     const catOptions = () => [['', 'Nenhuma']].concat(Object.values(S.categories).sort(byName).map((c) => [c.id, c.name]));
@@ -1569,8 +1619,8 @@
         const isD = t.type === 'deposito';
         return `
             ${field('Conta', sel('d_src', own, isW ? t.source : firstOwn), {cls: 'only-retirada'})}
-            ${field('Para', inText('d_dst', isW ? accName(t.dest) : '', 'list="dl-despesa" placeholder="Ex.: Supermercado"'), {cls: 'only-retirada'})}
-            ${field('De', inText('r_src', isD ? accName(t.source) : '', 'list="dl-receita" placeholder="Ex.: Empresa"'), {cls: 'only-deposito'})}
+            ${field('Para', inText('d_dst', isW && S.accounts[t.dest] ? accName(t.dest) : '', 'list="dl-despesa" placeholder="Ex.: Supermercado"'), {cls: 'only-retirada'})}
+            ${field('De', inText('r_src', isD && S.accounts[t.source] ? accName(t.source) : '', 'list="dl-receita" placeholder="Ex.: Empresa"'), {cls: 'only-deposito'})}
             ${field('Conta', sel('r_dst', own, isD ? t.dest : firstOwn), {cls: 'only-deposito'})}
             ${field('De', sel('t_src', own, t.type === 'transferencia' ? t.source : firstOwn), {cls: 'only-transferencia'})}
             ${field('Para', sel('t_dst', own, t.type === 'transferencia' ? t.dest : (own.find((o) => o[0] !== firstOwn) || own[0] || [''])[0]), {cls: 'only-transferencia'})}
@@ -1612,7 +1662,9 @@
             <div class="group form">
                 ${field('Descrição', inText('description', t.description || '', 'list="dl-desc" placeholder="Ex.: Mercado da semana" required'))}
                 ${field('Data', inDate('date', t.date))}
+                ${quickDates('date')}
                 ${accountFields(t)}
+                ${field('Pagamento', sel('paymentMethod', payOptions(), t.paymentMethod || ''))}
             </div>
             <div class="group form">
                 ${field('Categoria', inText('category', t.categoryId && S.categories[t.categoryId] ? S.categories[t.categoryId].name : '', 'list="dl-cat" placeholder="Nenhuma"'))}
@@ -1631,6 +1683,7 @@
             init: (form, el) => {
                 bindTypeSwitch(form);
                 if (!prev) {
+                    bindPaymentSuggest(form);
                     setTimeout(() => form.elements.amount.focus(), 250);
                     // Ao escolher uma descrição já usada, repete as contas e a categoria do último lançamento igual.
                     form.elements.description.addEventListener('change', () => {
@@ -1665,6 +1718,9 @@
                         }
                         if (!val(form, 'amount')) {
                             set('amount', C.moneyToInput(last.amount));
+                        }
+                        if (last.paymentMethod) {
+                            set('paymentMethod', last.paymentMethod);
                         }
                     });
                 }
@@ -1712,6 +1768,7 @@
                     categoryId: ensureCategory(val(form, 'category'), touched),
                     budgetId: val(form, 'budgetId') || null, billId: val(form, 'billId') || null,
                     tags: val(form, 'tags'), notes: val(form, 'notes'),
+                    paymentMethod: val(form, 'paymentMethod') || null,
                     createdAt: prev ? prev.createdAt : nowISO(), updatedAt: nowISO(),
                 }, readAccounts(form, type, touched));
                 n = withRules(C.normalizeTx(S, n), prev ? 'editar' : 'criar', touched);
@@ -2070,6 +2127,7 @@
                     ${field('Título', inText('title', r.title || '', 'placeholder="Ex.: Salário" required'))}
                     ${field('Valor', inMoney('amount', r.amount))}
                     ${accountFields(r)}
+                    ${field('Pagamento', sel('paymentMethod', payOptions(), r.paymentMethod || ''))}
                 </div>
                 <div class="group form">
                     ${field(prev ? 'Começou em' : 'Primeira data', inDate('firstDate', r.firstDate), prev ? {} : {})}
@@ -2093,6 +2151,9 @@
                     <div class="btn-row"><button type="button" class="btn danger" data-del>Apagar recorrência</button></div>` : '<p class="muted small">A primeira data precisa ser hoje ou depois. Os lançamentos são criados quando você abre o app na data.</p>'}`,
             init: (form, el) => {
                 bindTypeSwitch(form);
+                if (!prev) {
+                    bindPaymentSuggest(form);
+                }
                 const syncEnd = () => {
                     form.dataset.end = val(form, 'endMode');
                 };
@@ -2149,6 +2210,7 @@
                     budgetId: type === 'retirada' ? val(form, 'budgetId') || null : null,
                     billId: type === 'retirada' ? val(form, 'billId') || null : null,
                     tags: C.cleanTags(val(form, 'tags')),
+                    paymentMethod: val(form, 'paymentMethod') || null,
                     applyRules: checked(form, 'applyRules'), active: checked(form, 'active'), updatedAt: nowISO(),
                 }, readAccounts(form, type, touched));
                 const err = C.validateTx(S, {description: title, amount, date: first, source: n.source, dest: n.dest});
@@ -2235,7 +2297,7 @@
         openSheet({
             title: sign > 0 ? 'Guardar no cofrinho' : 'Retirar do cofrinho',
             body: `<label class="big-amount"><span>R$</span>${inMoney('amount', null, 'aria-label="Valor"')}</label>
-                <div class="group form">${field('Data', inDate('date', today()))}${field('Nota', inText('note', '', 'placeholder="opcional"'))}</div>
+                <div class="group form">${field('Data', inDate('date', today()))}${quickDates('date')}${field('Nota', inText('note', '', 'placeholder="opcional"'))}</div>
                 <p class="muted small">${sign > 0 ? 'Falta ' + esc(C.fmtMoney(info.left)) + ' para a meta.' : 'Guardado: ' + esc(C.fmtMoney(info.saved)) + '.'}</p>`,
             init: (form) => setTimeout(() => form.elements.amount.focus(), 250),
             onSubmit: (form) => {
@@ -2271,6 +2333,8 @@
                 return inMoney(name, value != null && value !== '' ? +value : null);
             case 'tipo':
                 return sel(name, Object.entries(C.TX_TYPES).map(([k, t]) => [k, t.label]), value);
+            case 'pagamento':
+                return sel(name, Object.entries(C.PAYMENT_METHODS).map(([k, p]) => [k, p.label]), value);
             case 'categoria':
                 return sel(name, Object.values(S.categories).sort(byName).map((c) => [c.id, c.name]), value);
             case 'orcamento':
@@ -2588,6 +2652,40 @@
         }
     });
 
+    // Máscara dd/mm/aaaa e sincronia com o calendário do aparelho.
+    document.addEventListener('input', (e) => {
+        const el = e.target;
+        if (el.matches && el.matches('input[data-date]')) {
+            if (!/^delete/.test(e.inputType || '')) {
+                const d = el.value.replace(/\D/g, '').slice(0, 8);
+                el.value = d.length > 4 ? `${d.slice(0, 2)}/${d.slice(2, 4)}/${d.slice(4)}` : d.length > 2 ? `${d.slice(0, 2)}/${d.slice(2)}` : d;
+            }
+            const iso = C.parseDateBR(el.value);
+            const pick = el.parentNode.querySelector('[data-pick]');
+            if (iso && pick) {
+                pick.value = iso;
+            }
+        }
+    });
+    document.addEventListener('change', (e) => {
+        const pick = e.target;
+        if (pick.matches && pick.matches('input[data-pick]') && C.isISODate(pick.value)) {
+            pick.closest('.date-in').querySelector('[data-date]').value = C.fmtDate(pick.value);
+        }
+    });
+    document.addEventListener('click', (e) => {
+        const b = e.target.closest('[data-setdate]');
+        if (b) {
+            const form = b.closest('form');
+            const iso = C.addDays(today(), +b.dataset.d);
+            form.elements[b.dataset.setdate].value = C.fmtDate(iso);
+            const pick = form.querySelector(`[data-pick="${b.dataset.setdate}"]`);
+            if (pick) {
+                pick.value = iso;
+            }
+        }
+    });
+
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape' && sheets.length) {
             closeSheet(sheets[sheets.length - 1]);
@@ -2652,7 +2750,8 @@
             if (date > t) {
                 return;
             }
-            const x = C.normalizeTx(s, Object.assign({id: C.newId(), date, source: src, dest: dst, amount, description: desc, createdAt: date + 'T12:00:00Z'}, extra || {}));
+            const pay = s.accounts[src].kind === 'cartao' ? 'credito' : C.groupOf(s.accounts[dst]) === 'despesa' ? 'debito' : 'pix';
+            const x = C.normalizeTx(s, Object.assign({id: C.newId(), date, source: src, dest: dst, amount, description: desc, paymentMethod: pay, createdAt: date + 'T12:00:00Z'}, extra || {}));
             s.tx[x.id] = x;
         };
         for (let i = 5; i >= 0; i--) {
@@ -2662,8 +2761,8 @@
             if (i % 2 === 0) {
                 add(d(18), free, cc, 120000 + Math.round(rnd() * 80000), 'Projeto de site', {categoryId: cat['Salário'], tags: ['freelance']});
             }
-            add(d(5), cc, exp['Imobiliária'], 180000, 'Aluguel', {categoryId: cat['Moradia'], billId: bAluguel});
-            add(d(15), cc, exp['Companhia de energia'], 15000 + Math.round(rnd() * 9000), 'Conta de luz', {categoryId: cat['Contas da casa'], billId: bLuz});
+            add(d(5), cc, exp['Imobiliária'], 180000, 'Aluguel', {categoryId: cat['Moradia'], billId: bAluguel, paymentMethod: 'boleto'});
+            add(d(15), cc, exp['Companhia de energia'], 15000 + Math.round(rnd() * 9000), 'Conta de luz', {categoryId: cat['Contas da casa'], billId: bLuz, paymentMethod: 'boleto'});
             add(d(20), cc, exp['Provedor de internet'], 9990, 'Internet', {categoryId: cat['Contas da casa'], billId: bNet});
             add(d(6), cc, poup, 50000, 'Reserva do mês');
             add(d(10), cc, card, 150000 + Math.round(rnd() * 60000), 'Pagamento da fatura');
@@ -2671,7 +2770,7 @@
                 add(d(day), card, exp['Supermercado'], 18000 + Math.round(rnd() * 22000), 'Compras do mês', {categoryId: cat['Alimentação'], budgetId: bud['Mercado']});
             }
             for (const day of [2, 7, 12, 19, 26]) {
-                add(d(day), cc, exp['Padaria'], 1500 + Math.round(rnd() * 2500), 'Padaria', {categoryId: cat['Alimentação'], budgetId: bud['Mercado']});
+                add(d(day), cc, exp['Padaria'], 1500 + Math.round(rnd() * 2500), 'Padaria', {categoryId: cat['Alimentação'], budgetId: bud['Mercado'], paymentMethod: day % 2 ? 'pix' : 'dinheiro'});
             }
             for (const day of [8, 22]) {
                 add(d(day), card, exp['Posto de combustível'], 20000 + Math.round(rnd() * 8000), 'Gasolina', {categoryId: cat['Transporte'], budgetId: bud['Transporte']});
@@ -2682,12 +2781,12 @@
             add(d(14), card, exp['Restaurante'], 9000 + Math.round(rnd() * 9000), 'Jantar fora', {categoryId: cat['Lazer'], budgetId: bud['Lazer']});
             add(d(24), card, exp['Cinema'], 6000, 'Cinema', {categoryId: cat['Lazer'], budgetId: bud['Lazer']});
             if (rnd() > 0.5) {
-                add(d(11), cc, exp['Farmácia'], 4000 + Math.round(rnd() * 8000), 'Farmácia', {categoryId: cat['Saúde']});
+                add(d(11), cc, exp['Farmácia'], 4000 + Math.round(rnd() * 8000), 'Farmácia', {categoryId: cat['Saúde'], paymentMethod: 'pix'});
             }
         }
         const rec = {
             id: C.newId(), title: 'Salário', type: 'deposito', amount: 750000, source: emp, dest: cc, categoryId: cat['Salário'],
-            firstDate: C.addMonths(start, 0, 5), repeatFreq: 'mensal', skip: 0, active: true, applyRules: false, tags: [],
+            firstDate: C.addMonths(start, 0, 5), repeatFreq: 'mensal', skip: 0, active: true, applyRules: false, tags: [], paymentMethod: 'pix',
             lastCreated: C.monthKey(t) + '-05' <= t ? C.monthKey(t) + '-05' : C.shiftMonth(mk, -1) + '-05',
         };
         s.recurrences[rec.id] = rec;

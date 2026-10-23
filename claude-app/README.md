@@ -1,7 +1,12 @@
 # Vagalume — finanças pessoais no Claude
 
 Adaptação do [Firefly III](https://github.com/firefly-iii/firefly-iii) para rodar como página do Claude
-(claude.ai), sem servidor próprio. Interface em português do Brasil e valores em reais (R$).
+(claude.ai), sem servidor próprio, sem PHP e sem backend. Interface em português do Brasil, valores em
+reais (R$), datas em dd/mm/aaaa e formas de pagamento brasileiras (Pix, débito, crédito, dinheiro e
+boleto). Pensado primeiro para o iPhone: abra no Safari e use "Adicionar à Tela de Início".
+
+Não há bibliotecas externas: gráficos e formatação são feitos em JavaScript puro. Se alguma for
+adicionada, deve vir de CDN permitida (cdnjs, jsdelivr ou unpkg) com versão fixa.
 
 ## O que foi reaproveitado do Firefly III
 
@@ -15,7 +20,12 @@ Adaptação do [Firefly III](https://github.com/firefly-iii/firefly-iii) para ro
   recorrente pode criar uma regra para vincular os pagamentos sozinha e as regras rodam em ordem,
   com opção de parar as seguintes.
 
-Nada do PHP/Laravel roda aqui. A lógica foi reescrita em JavaScript em `core.js`.
+Nada do PHP/Laravel roda aqui. A lógica foi reescrita em JavaScript em `core.js`, e cada chamada que
+o Firefly III faria à sua API virou uma leitura ou gravação no banco de dados da página do Claude.
+
+Acréscimo em relação ao Firefly III: cada lançamento (e cada recorrência) pode ter uma forma de
+pagamento. As regras têm a condição "Forma de pagamento é" e a ação "Definir forma de pagamento", e
+os relatórios mostram as despesas por forma de pagamento.
 
 ## Arquivos
 

@@ -50,7 +50,12 @@ test('datas: meses com fim de mês e formatos', () => {
     assert.equal(C.shiftMonth('2026-01', -1), '2025-12');
     assert.equal(C.monthEnd('2028-02'), '2028-02-29');
     assert.equal(C.fmtDate('2026-10-23'), '23/10/2026');
-    assert.equal(C.fmtDate('2026-10-23', 'dia'), 'sexta-feira, 23 de outubro');
+    assert.equal(C.fmtDate('2026-10-23', 'dia'), 'sexta-feira, 23/10/2026');
+    assert.equal(C.fmtDate('2026-10-03', 'curta'), '03/10');
+    assert.equal(C.parseDateBR('23/10/2026'), '2026-10-23');
+    assert.equal(C.parseDateBR('3/1/26'), '2026-01-03');
+    assert.equal(C.parseDateBR('31/02/2026'), null);
+    assert.equal(C.parseDateBR('2026-10-23'), null);
     assert.equal(C.fmtMonth('2026-10'), 'outubro de 2026');
     assert.ok(!C.isISODate('2026-02-30'));
 });
@@ -194,6 +199,22 @@ test('regras: condições, ações e parar processamento', () => {
     assert.deepEqual(r.applied, []);
     s.rules.r1.strict = false;
     assert.ok(C.ruleMatches(s.rules.r1, Object.assign({}, tx, {amount: 99999}), ctx));
+});
+
+test('formas de pagamento: normalização, sugestão, resumo e regras', () => {
+    const s = fixture();
+    const t = C.normalizeTx(s, {id: 'x', date: '2026-01-02', source: 'cc', dest: 'merc', amount: 500, description: 'x', paymentMethod: 'pix'});
+    assert.equal(t.paymentMethod, 'pix');
+    assert.equal(C.normalizeTx(s, Object.assign({}, t, {paymentMethod: 'cheque'})).paymentMethod, null);
+    assert.equal(C.suggestPayment(s.accounts.cartao), 'credito');
+    assert.equal(C.suggestPayment(s.accounts.cc), null);
+    s.tx.x = t;
+    const r = C.summarize(s, '2026-01-01', '2026-01-31');
+    assert.equal(r.byPayment.pix, 500);
+    assert.equal(r.byPayment[''], 30000);
+    s.rules.r = {id: 'r', title: 'Pix', active: true, triggers: [{type: 'pagamento_e', value: 'pix'}], actions: [{type: 'definir_pagamento', value: 'boleto'}]};
+    const ctx = {accName: () => '', ensureAccount: () => ''};
+    assert.equal(C.applyRules(s, t, ctx, {event: 'criar'}).tx.paymentMethod, 'boleto');
 });
 
 test('cofrinhos', () => {

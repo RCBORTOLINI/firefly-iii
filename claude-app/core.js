@@ -266,11 +266,13 @@
     function emptyState() {
         return {
             accounts: {}, categories: {}, budgets: {}, bills: {}, recurrences: {},
-            piggies: {}, rules: {}, settings: {}, tx: {},
+            piggies: {}, rules: {}, importProfiles: {}, imports: {}, settings: {}, tx: {},
         };
     }
 
     const lc = (s) => String(s == null ? '' : s).toLocaleLowerCase('pt-BR').trim();
+    /** Minúsculas e sem acentos, para comparar textos de extrato ("FARMÁCIA" = "farmacia"). */
+    const fold = (s) => lc(s).normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 
     function findAccountByName(state, name, grupo) {
         const n = lc(name);
@@ -676,25 +678,25 @@
 
     /** Gatilhos (condições). `input` diz que tipo de valor a condição usa. */
     const RULE_TRIGGERS = {
-        descricao_contem: {label: 'Descrição contém', input: 'texto', test: (t, v) => lc(t.description).includes(lc(v))},
-        descricao_comeca: {label: 'Descrição começa com', input: 'texto', test: (t, v) => lc(t.description).startsWith(lc(v))},
-        descricao_termina: {label: 'Descrição termina com', input: 'texto', test: (t, v) => lc(t.description).endsWith(lc(v))},
-        descricao_igual: {label: 'Descrição é', input: 'texto', test: (t, v) => lc(t.description) === lc(v)},
+        descricao_contem: {label: 'Descrição contém', input: 'texto', test: (t, v) => fold(t.description).includes(fold(v))},
+        descricao_comeca: {label: 'Descrição começa com', input: 'texto', test: (t, v) => fold(t.description).startsWith(fold(v))},
+        descricao_termina: {label: 'Descrição termina com', input: 'texto', test: (t, v) => fold(t.description).endsWith(fold(v))},
+        descricao_igual: {label: 'Descrição é', input: 'texto', test: (t, v) => fold(t.description) === fold(v)},
         valor_maior: {label: 'Valor maior que', input: 'valor', test: (t, v) => t.amount > num(v)},
         valor_menor: {label: 'Valor menor que', input: 'valor', test: (t, v) => t.amount < num(v)},
         valor_igual: {label: 'Valor é', input: 'valor', test: (t, v) => t.amount === num(v)},
-        origem_e: {label: 'Conta de origem é', input: 'texto', test: (t, v, c) => lc(c.accName(t.source)) === lc(v)},
-        origem_contem: {label: 'Conta de origem contém', input: 'texto', test: (t, v, c) => lc(c.accName(t.source)).includes(lc(v))},
-        destino_e: {label: 'Conta de destino é', input: 'texto', test: (t, v, c) => lc(c.accName(t.dest)) === lc(v)},
-        destino_contem: {label: 'Conta de destino contém', input: 'texto', test: (t, v, c) => lc(c.accName(t.dest)).includes(lc(v))},
+        origem_e: {label: 'Conta de origem é', input: 'texto', test: (t, v, c) => fold(c.accName(t.source)) === fold(v)},
+        origem_contem: {label: 'Conta de origem contém', input: 'texto', test: (t, v, c) => fold(c.accName(t.source)).includes(fold(v))},
+        destino_e: {label: 'Conta de destino é', input: 'texto', test: (t, v, c) => fold(c.accName(t.dest)) === fold(v)},
+        destino_contem: {label: 'Conta de destino contém', input: 'texto', test: (t, v, c) => fold(c.accName(t.dest)).includes(fold(v))},
         tipo_e: {label: 'Tipo é', input: 'tipo', test: (t, v) => t.type === v},
         pagamento_e: {label: 'Forma de pagamento é', input: 'pagamento', test: (t, v) => t.paymentMethod === v},
         categoria_e: {label: 'Categoria é', input: 'categoria', test: (t, v) => t.categoryId === v},
         sem_categoria: {label: 'Não tem categoria', input: null, test: (t) => !t.categoryId},
         orcamento_e: {label: 'Orçamento é', input: 'orcamento', test: (t, v) => t.budgetId === v},
         sem_orcamento: {label: 'Não tem orçamento', input: null, test: (t) => !t.budgetId},
-        tem_tag: {label: 'Tem a tag', input: 'texto', test: (t, v) => (t.tags || []).some((x) => lc(x) === lc(v))},
-        notas_contem: {label: 'Notas contêm', input: 'texto', test: (t, v) => lc(t.notes).includes(lc(v))},
+        tem_tag: {label: 'Tem a tag', input: 'texto', test: (t, v) => (t.tags || []).some((x) => fold(x) === fold(v))},
+        notas_contem: {label: 'Notas contêm', input: 'texto', test: (t, v) => fold(t.notes).includes(fold(v))},
     };
 
     const RULE_ACTIONS = {
@@ -822,7 +824,7 @@
 
     // ------------------------------------------------------------------- backup
 
-    const ENTITY_KEYS = ['accounts', 'categories', 'budgets', 'bills', 'recurrences', 'piggies', 'rules'];
+    const ENTITY_KEYS = ['accounts', 'categories', 'budgets', 'bills', 'recurrences', 'piggies', 'rules', 'importProfiles', 'imports'];
 
     function exportData(state) {
         const data = {settings: state.settings || {}, transactions: Object.values(state.tx).sort(txSort).reverse()};

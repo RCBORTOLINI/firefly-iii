@@ -15,7 +15,7 @@
     const C = window.FFCore;
     const SOURCE_URL = 'https://github.com/rcbortolini/firefly-iii/tree/claude/vagalume/claude-app';
     const FIREFLY_URL = 'https://github.com/firefly-iii/firefly-iii';
-    const DOCS = ['accounts', 'categories', 'budgets', 'bills', 'recurrences', 'piggies', 'rules', 'settings'];
+    const DOCS = ['accounts', 'categories', 'budgets', 'bills', 'recurrences', 'piggies', 'rules', 'importProfiles', 'imports', 'settings'];
     const TAB_ID = C.newId();
 
     const $ = (s, el) => (el || document).querySelector(s);
@@ -381,6 +381,7 @@
         cofrinhos: svg('<path d="M5 11.5c0-3.3 3.1-6 7-6s7 2.7 7 6c0 2-1.1 3.7-2.8 4.8V19h-2.7v-1.6a9 9 0 0 1-3 0V19H7.8v-2.7C6 15.2 5 13.5 5 11.5z"/><path d="M19 10.5h1.5v3H19M10 5.8l-1.2-2.3"/><circle cx="15" cy="10.5" r=".6" fill="currentColor"/>'),
         regras: svg('<path d="M4 5h16l-6 7.5V19l-4 1.5v-8z"/>'),
         relatorios: svg('<path d="M4 20h16"/><rect x="5.5" y="11" width="3" height="6.5" rx="1"/><rect x="10.5" y="6" width="3" height="11.5" rx="1"/><rect x="15.5" y="13" width="3" height="4.5" rx="1"/>'),
+        importar: svg('<path d="M12 15V4M7.5 8.5L12 4l4.5 4.5"/><path d="M4 13.5V19a1.5 1.5 0 0 0 1.5 1.5h13A1.5 1.5 0 0 0 20 19v-5.5"/>'),
         backup: svg('<path d="M12 4v11M7.5 10.5L12 15l4.5-4.5"/><path d="M4 16.5V19a1.5 1.5 0 0 0 1.5 1.5h13A1.5 1.5 0 0 0 20 19v-2.5"/>'),
         sobre: svg('<circle cx="12" cy="12" r="8.5"/><path d="M12 11v5.5M12 7.8v.2"/>'),
     };
@@ -845,7 +846,7 @@
             <div id="tx-list">${txListBlock()}</div>`;
         return {
             title: 'Lançamentos', large: true, body,
-            actions: [{act: 'novo-lancamento', icon: 'plus', label: 'Novo lançamento'}],
+            actions: [{act: 'ir-importar', icon: 'importar', label: 'Importar extrato'}, {act: 'novo-lancamento', icon: 'plus', label: 'Novo lançamento'}],
             after: (root) => {
                 const input = $('#busca', root);
                 input.addEventListener('input', () => {
@@ -954,7 +955,7 @@
         const items = [
             ['orcamentos', 'Orçamentos'], ['categorias', 'Categorias'], ['tags', 'Tags'],
             ['contasRecorrentes', 'Contas recorrentes'], ['recorrencias', 'Lançamentos recorrentes'],
-            ['cofrinhos', 'Cofrinhos'], ['regras', 'Regras'], ['relatorios', 'Relatórios'],
+            ['cofrinhos', 'Cofrinhos'], ['regras', 'Regras'], ['relatorios', 'Relatórios'], ['importar', 'Importar extrato'],
         ];
         const sys = [['backup', 'Backup e restauração'], ['sobre', 'Sobre e licença']];
         const r = ([go, label]) => rowLink(go, null, label, '', '', `<span class="menu-ico">${ICON[go === 'contasRecorrentes' ? 'bills' : go]}</span>`);
@@ -1366,14 +1367,503 @@
             <p>Gerenciador de finanças pessoais que roda direto no Claude, sem servidor próprio.</p>
             <p>O Vagalume é uma adaptação do <b>Firefly III</b>, criado por James Cole e mantido por uma comunidade de colaboradores. Este app reaproveita o modelo de dados e a organização das telas do Firefly III (contas, lançamentos em partidas dobradas, orçamentos, categorias, contas recorrentes, cofrinhos, regras e relatórios), reescritos em JavaScript.</p>
             <p>Firefly III: Copyright © James Cole &lt;james@firefly-iii.org&gt; e colaboradores.<br>Modificações: Copyright © 2026 rcbortolini.</p>
+            <p>A importação de extratos reaproveita a lógica do <b>Firefly III Data Importer</b> (mapeamento de colunas do CSV, leitura de valores e detecção de duplicados), também de James Cole e colaboradores, sob a AGPL-3.0, e a leitura de OFX e QIF do <b>ezbookkeeping</b>, Copyright © 2020-2026 MaysWind, sob a licença MIT. O aviso de copyright e a licença MIT do ezbookkeeping estão no arquivo importer.js.</p>
             <p>Este programa é software livre: você pode redistribuí-lo e/ou modificá-lo sob os termos da <b>GNU Affero General Public License</b>, versão 3 ou posterior, publicada pela Free Software Foundation. Ele é distribuído na esperança de que seja útil, mas sem nenhuma garantia.</p>
             </div>
             <div class="group">
                 <a class="row" href="${SOURCE_URL}" target="_blank" rel="noopener"><span class="row-main"><span class="row-title">Código-fonte do Vagalume</span><span class="row-sub">github.com/rcbortolini/firefly-iii</span></span>${ICON.chevron}</a>
                 <a class="row" href="${FIREFLY_URL}" target="_blank" rel="noopener"><span class="row-main"><span class="row-title">Projeto original Firefly III</span><span class="row-sub">github.com/firefly-iii/firefly-iii</span></span>${ICON.chevron}</a>
+                <a class="row" href="https://github.com/firefly-iii/data-importer" target="_blank" rel="noopener"><span class="row-main"><span class="row-title">Firefly III Data Importer</span><span class="row-sub">AGPL-3.0 · github.com/firefly-iii/data-importer</span></span>${ICON.chevron}</a>
+                <a class="row" href="https://github.com/mayswind/ezbookkeeping" target="_blank" rel="noopener"><span class="row-main"><span class="row-title">ezbookkeeping</span><span class="row-sub">MIT · github.com/mayswind/ezbookkeeping</span></span>${ICON.chevron}</a>
                 <a class="row" href="https://www.gnu.org/licenses/agpl-3.0.html" target="_blank" rel="noopener"><span class="row-main"><span class="row-title">Texto da licença AGPL-3.0</span><span class="row-sub">gnu.org</span></span>${ICON.chevron}</a>
             </div>`,
     });
+
+    // ------------------------------------------------------------ importação
+    // Fluxo do Data Importer, no navegador: arquivo → (CSV) colunas → prévia → importar.
+    // A leitura dos arquivos e a detecção de duplicados ficam em importer.js.
+
+    const I = window.FFImport;
+    const DUP_TEXT = {
+        id: 'Já importado', conteudo: 'Já importado', arquivo: 'Repetido no arquivo', possivel: 'Possível duplicado',
+    };
+    const CAT_SOURCE = {regra: 'regra', historico: 'histórico', arquivo: 'do arquivo', manual: 'editada'};
+    const FORMAT_LABEL = {ofx: 'OFX', qif: 'QIF', csv: 'CSV'};
+    const DELIMS = [[';', 'Ponto e vírgula (;)'], [',', 'Vírgula (,)'], ['\t', 'Tabulação'], ['|', 'Barra vertical (|)']];
+
+    const profileList = (kind) => Object.values(S.importProfiles).filter((p) => p.kind === kind).sort(byName);
+    const ofxKey = (st) => [st.card ? 'cartao' : 'banco', st.bankId, st.branchId, st.accountId].join('|');
+
+    VIEWS.importar = () => {
+        const imps = Object.values(S.imports).sort((a, b) => String(b.at || '').localeCompare(String(a.at || '')));
+        const saved = profileList('csv').concat(profileList('ofx'));
+        let body = `<p class="muted">Envie o extrato do banco em OFX, CSV ou QIF. Você confere tudo numa prévia antes de importar, e lançamentos que já existem ficam de fora.</p>
+            <label class="btn primary wide file-btn" for="arquivo-extrato">Escolher arquivo do extrato</label>
+            <input type="file" id="arquivo-extrato" accept=".ofx,.qfx,.csv,.txt,.qif" hidden>
+            <p class="muted small">No iPhone, baixe o extrato no app ou no site do banco, de preferência em OFX, e depois escolha o arquivo pelo app Arquivos.</p>`;
+        if (!S.settings.starterRules) {
+            body += `<div class="group"><button type="button" class="row" data-act="regras-sugeridas"><span class="menu-ico">${ICON.regras}</span>
+                <span class="row-main"><span class="row-title">Adicionar regras de categoria sugeridas</span>
+                <span class="row-sub">"UBER" vira Transporte, "IFOOD" vira Alimentação e outras</span></span>${ICON.chevron}</button></div>`;
+        }
+        if (saved.length) {
+            body += section('Bancos salvos', `<div class="group">${saved.map((p) => `<button type="button" class="row" data-act="perfil-importacao" data-id="${esc(p.id)}">
+                <span class="row-main"><span class="row-title">${esc(p.name)}</span>
+                <span class="row-sub">${p.kind === 'csv' ? 'Mapeamento de colunas do CSV' : 'Conta do arquivo OFX'}${S.accounts[p.accountId] ? ' · vai para ' + esc(accName(p.accountId)) : ''}</span></span>${ICON.chevron}</button>`).join('')}</div>`);
+        }
+        body += section('Importações', imps.length ? `<div class="group">${imps.map((x) => {
+            const left = Object.values(S.tx).filter((t) => t.importId === x.id).length;
+            return `<div class="row static"><span class="row-main"><span class="row-title">${esc(x.fileName)}</span>
+                <span class="row-sub">${esc(C.fmtDate(x.date))} · ${left} lançamento${left === 1 ? '' : 's'} · ${esc(accName(x.accountId))}</span></span>
+                ${left ? `<button type="button" class="btn small-btn danger" data-act="desfazer-importacao" data-id="${esc(x.id)}">Desfazer</button>` : ''}</div>`;
+        }).join('')}</div>` : empty('Nenhuma importação ainda.'));
+        return {
+            title: 'Importar extrato', body,
+            after: (root) => {
+                $('#arquivo-extrato', root).addEventListener('change', (e) => {
+                    const f = e.target.files && e.target.files[0];
+                    e.target.value = '';
+                    if (f) {
+                        readStatementFile(f);
+                    }
+                });
+            },
+        };
+    };
+
+    async function readStatementFile(file) {
+        if (!ownAccounts().length) {
+            toast('Cadastre uma conta antes de importar.');
+            return;
+        }
+        let text;
+        try {
+            text = I.decodeBytes(await file.arrayBuffer());
+        } catch (e) {
+            toast('Não consegui ler esse arquivo.');
+            return;
+        }
+        const format = I.detectFormat(text, file.name);
+        const imp = {fileName: file.name, text, format, opts: {applyRules: true, ignoreDuplicateLines: false}, qifOrder: 'dmy', stmtIndex: 0};
+        try {
+            if (format === 'csv') {
+                setupCsv(imp);
+                ui.imp = imp;
+                go('importarColunas');
+                return;
+            }
+            imp.statements = format === 'ofx' ? I.parseOFX(text) : I.parseQIF(text, imp.qifOrder);
+        } catch (e) {
+            toast(e.message || 'Não consegui ler esse arquivo.');
+            return;
+        }
+        imp.stmtIndex = Math.max(0, imp.statements.findIndex((s) => s.items.length));
+        if (!imp.statements[imp.stmtIndex].items.length) {
+            toast('O extrato não tem lançamentos.');
+            return;
+        }
+        ui.imp = imp;
+        pickImportAccount(imp);
+        await refreshPreview();
+        go('importarPrevia');
+    }
+
+    function setupCsv(imp) {
+        const delimiter = I.detectDelimiter(imp.text);
+        const rows = I.parseCSV(imp.text, delimiter);
+        if (rows.length < 2) {
+            throw new Error('O CSV não tem linhas suficientes.');
+        }
+        const sig = I.headerSignature(rows[0]);
+        const saved = profileList('csv').find((p) => p.signature === sig);
+        imp.csv = {rows, delimiter, matched: saved ? saved.name : null};
+        imp.csv.profile = saved ? clone(saved) : csvGuessProfile(rows, delimiter, imp.fileName);
+        if (saved && saved.delimiter !== delimiter) {
+            imp.csv.rows = I.parseCSV(imp.text, saved.delimiter);
+        }
+    }
+
+    function csvGuessProfile(rows, delimiter, fileName) {
+        const first = rows[0];
+        const hasHeader = !first.some((c) => Number.isFinite(I.parseAmount(c)) && /\d/.test(c)) || first.some((c) => /[a-zà-ú]{4}/i.test(c) && !/\d/.test(c));
+        const data = rows.slice(hasHeader ? 1 : 0, (hasHeader ? 1 : 0) + 12);
+        const roles = I.guessRoles(hasHeader ? first : null, data);
+        const dateCol = roles.indexOf('date_transaction');
+        return {
+            kind: 'csv', name: String(fileName || 'Banco').replace(/\.[^.]+$/, ''), delimiter, hasHeader, skipRows: 0,
+            dateFormat: dateCol >= 0 ? I.guessDateFormat(data.map((r) => r[dateCol])) : 'dmy',
+            roles, idColumns: [],
+        };
+    }
+
+    function pickImportAccount(imp) {
+        let id = null;
+        if (imp.format === 'ofx') {
+            const st = imp.statements[imp.stmtIndex];
+            const link = profileList('ofx').find((p) => p.key === ofxKey(st));
+            id = link && S.accounts[link.accountId] ? link.accountId : null;
+            if (!id && st.card) {
+                const card = ownAccounts().find((a) => a.kind === 'cartao');
+                id = card ? card.id : null;
+            }
+        } else if (imp.format === 'csv') {
+            const p = imp.csv.profile;
+            id = p.accountId && S.accounts[p.accountId] ? p.accountId : null;
+        }
+        if (!id) {
+            // Extrato de banco não vai para o cartão por engano, e vice-versa.
+            const def = S.accounts[defaultOwnAccount()];
+            const wantCard = imp.format === 'ofx' && imp.statements[imp.stmtIndex].card;
+            const pool = ownAccounts();
+            id = def && (def.kind === 'cartao') === wantCard ? def.id
+                : (pool.find((a) => (a.kind === 'cartao') === wantCard && a.kind !== 'emprestimo') || def || {}).id;
+        }
+        imp.accountId = id;
+    }
+
+    async function refreshPreview() {
+        const imp = ui.imp;
+        let items;
+        imp.errors = [];
+        if (imp.format === 'csv') {
+            const r = I.csvItems(imp.csv.rows, imp.csv.profile);
+            items = r.items;
+            imp.errors = r.errors;
+        } else {
+            const all = imp.statements[imp.stmtIndex].items;
+            items = all.filter((x) => x.date && Number.isFinite(x.amount) && x.amount !== 0);
+            imp.errors = all.filter((x) => !items.includes(x)).map((x) => ({reason: 'data ou valor inválido', raw: x.raw}));
+        }
+        const marked = await I.markDuplicates(S, items, imp.accountId, {ignoreDuplicateLines: imp.opts.ignoreDuplicateLines});
+        imp.rows = I.prepareRows(S, marked, imp.accountId, {applyRules: imp.opts.applyRules})
+            .sort((a, b) => (a.tx.date < b.tx.date ? 1 : a.tx.date > b.tx.date ? -1 : a.key - b.key));
+    }
+
+    VIEWS.importarColunas = () => {
+        const imp = ui.imp;
+        if (!imp || !imp.csv) {
+            return {title: 'Colunas do CSV', body: empty('Escolha um arquivo primeiro.', '<button type="button" class="btn primary" data-act="voltar">Voltar</button>')};
+        }
+        const {rows, profile} = imp.csv;
+        const start = profile.skipRows || 0;
+        const header = profile.hasHeader ? rows[start] || [] : null;
+        const data = rows.slice(start + (profile.hasHeader ? 1 : 0));
+        const ncol = Math.max(1, ...rows.slice(start, start + 12).map((r) => r.length));
+        const check = I.csvItems(rows, profile);
+        const roleOpts = Object.entries(I.ROLES).map(([k, r]) => [k, r.label]);
+        const hasDate = profile.roles.includes('date_transaction');
+        const hasAmount = profile.roles.some((r) => /^amount/.test(r));
+        let cols = '';
+        for (let i = 0; i < ncol; i++) {
+            const samples = data.map((r) => r[i]).filter(Boolean).slice(0, 3);
+            cols += `<div class="col-card">
+                <div class="col-head"><b>Coluna ${i + 1}</b>${header && header[i] ? ' · ' + esc(header[i]) : ''}</div>
+                <div class="col-samples">${samples.length ? samples.map((v) => `<span>${esc(v)}</span>`).join('') : '<i>vazia</i>'}</div>
+                <select id="f-role-${i}" data-role="${i}" aria-label="O que a coluna ${i + 1} contém">${roleOpts.map(([v, l]) => opt(v, l, profile.roles[i] || '_ignore')).join('')}</select>
+                <label class="col-id"><input type="checkbox" id="f-idcol-${i}" data-idcol="${i}"${(profile.idColumns || []).includes(i) ? ' checked' : ''}> Usar para reconhecer duplicados</label>
+            </div>`;
+        }
+        const body = `${imp.csv.matched ? `<div class="banner ok">Usando o mapeamento salvo de <b>${esc(imp.csv.matched)}</b>. Confira e siga para a prévia.</div>` : ''}
+            <div id="imp-cols">
+            <p class="muted">${esc(imp.fileName)} · diga o que cada coluna contém. O mapeamento fica salvo para os próximos arquivos deste banco.</p>
+            <div class="group form">
+                ${field('Nome do banco', inText('imp-name', profile.name, 'placeholder="Ex.: Banco X conta corrente"'))}
+                ${field('Separador', sel('imp-delim', DELIMS, profile.delimiter))}
+                ${sw('imp-header', 'Primeira linha é cabeçalho', profile.hasHeader)}
+                ${field('Pular linhas no topo', sel('imp-skip', [0, 1, 2, 3, 4, 5, 6, 8, 10].map((n) => [n, String(n)]), start))}
+                ${field('Formato da data', sel('imp-datefmt', Object.entries(I.DATE_FORMATS), profile.dateFormat))}
+            </div>
+            <div class="cols">${cols}</div>
+            <p class="muted small">Em faturas de cartão em que o gasto aparece positivo, use "Valor (sinal invertido)". Se o banco manda uma coluna de número do documento, marque-a para reconhecer duplicados; sem ela, o Vagalume compara data, valor e descrição.</p>
+            <p class="muted"><b>${check.items.length}</b> lançamento${check.items.length === 1 ? '' : 's'} reconhecido${check.items.length === 1 ? '' : 's'}${check.errors.length ? ` · ${check.errors.length} linha${check.errors.length === 1 ? '' : 's'} ignorada${check.errors.length === 1 ? '' : 's'} (saldos, totais ou sem data/valor)` : ''}.</p>
+            ${!hasDate || !hasAmount ? '<p class="form-error">Escolha uma coluna de Data e uma de valor.</p>' : ''}
+            <button type="button" class="btn primary wide" data-act="imp-previa"${!hasDate || !hasAmount || !check.items.length ? ' disabled' : ''}>Ver prévia</button>
+            </div>`;
+        return {
+            title: 'Colunas do CSV', body,
+            after: (root) => {
+                const box = $('#imp-cols', root);
+                box.addEventListener('input', (e) => {
+                    if (e.target.id === 'f-imp-name') {
+                        profile.name = e.target.value;
+                    }
+                });
+                box.addEventListener('change', (e) => {
+                    const t = e.target;
+                    if (t.id === 'f-imp-delim') {
+                        profile.delimiter = t.value;
+                        imp.csv.rows = I.parseCSV(imp.text, t.value);
+                        const g = csvGuessProfile(imp.csv.rows, t.value, profile.name);
+                        Object.assign(profile, {roles: g.roles, hasHeader: g.hasHeader, dateFormat: g.dateFormat, idColumns: []});
+                    } else if (t.id === 'f-imp-header') {
+                        profile.hasHeader = t.checked;
+                    } else if (t.id === 'f-imp-skip') {
+                        profile.skipRows = +t.value;
+                    } else if (t.id === 'f-imp-datefmt') {
+                        profile.dateFormat = t.value;
+                    } else if (t.dataset.role != null) {
+                        profile.roles[+t.dataset.role] = t.value;
+                    } else if (t.dataset.idcol != null) {
+                        const i = +t.dataset.idcol;
+                        profile.idColumns = (profile.idColumns || []).filter((x) => x !== i).concat(t.checked ? [i] : []).sort((a, b) => a - b);
+                    } else {
+                        return;
+                    }
+                    render();
+                });
+            },
+        };
+    };
+
+    function rowCategoryText(r) {
+        const t = r.tx;
+        const name = t.categoryId && S.categories[t.categoryId] ? S.categories[t.categoryId].name : t.categoryName;
+        if (!name) {
+            return '';
+        }
+        return esc(name) + (r.catSource ? ` <span class="src">(${CAT_SOURCE[r.catSource]})</span>` : '');
+    }
+
+    function rowCounterpart(r) {
+        const t = r.tx;
+        const other = t.source === ui.imp.accountId ? t.dest : t.source;
+        return String(other).startsWith(I.CP) ? other.slice(I.CP.length) : accName(other);
+    }
+
+    VIEWS.importarPrevia = () => {
+        const imp = ui.imp;
+        if (!imp || !imp.rows) {
+            return {title: 'Prévia', body: empty('Escolha um arquivo primeiro.')};
+        }
+        const rows = imp.rows;
+        const sel1 = rows.filter((r) => r.include);
+        const fresh = rows.filter((r) => !r.dup).length;
+        const done = rows.filter((r) => r.dup && r.dup.kind !== 'possivel').length;
+        const maybe = rows.filter((r) => r.dup && r.dup.kind === 'possivel').length;
+        const st = imp.statements ? imp.statements[imp.stmtIndex] : null;
+        const period = st && st.start ? ` · ${C.fmtDate(st.start)} a ${C.fmtDate(st.end)}` : '';
+        const acc = S.accounts[imp.accountId];
+        let body = `<p class="muted">${esc(imp.fileName)} · ${FORMAT_LABEL[imp.format]}${esc(period)}${st && st.card ? ' · fatura de cartão' : ''}</p>
+            <div id="imp-opts" class="group form">
+                ${field('Importar para', sel('imp-account', ownAccounts().map((a) => [a.id, a.name]), imp.accountId))}
+                ${imp.statements && imp.statements.length > 1 ? field('Extrato', sel('imp-stmt', imp.statements.map((s, i) => [i, (s.card ? 'Cartão ' : 'Conta ') + (s.accountId || i + 1)]), imp.stmtIndex)) : ''}
+                ${imp.format === 'qif' ? field('Formato da data', sel('imp-qifdate', Object.entries(I.DATE_FORMATS).filter(([k]) => k !== 'compact'), imp.qifOrder)) : ''}
+                ${sw('imp-rules', 'Sugerir categoria pelas regras', imp.opts.applyRules)}
+                ${sw('imp-duplines', 'Ignorar linhas idênticas no arquivo', imp.opts.ignoreDuplicateLines)}
+            </div>
+            ${st && st.card && acc && acc.kind !== 'cartao' ? '<p class="banner">Este arquivo é de cartão de crédito. Confira se a conta escolhida é o seu cartão.</p>' : ''}
+            ${tiles([
+                {label: 'Novos', value: String(fresh)},
+                {label: 'Já importados', value: String(done)},
+                {label: 'Possíveis duplicados', value: String(maybe), sub: maybe ? 'Desmarcados. Confira.' : ''},
+                {label: 'Linhas ignoradas', value: String((imp.errors || []).length), sub: (imp.errors || []).length ? 'Saldos ou sem data/valor' : ''},
+            ])}
+            ${!Object.keys(S.rules).length ? `<div class="banner">Sem regras de categoria ainda. <button type="button" class="link" data-act="regras-sugeridas">Adicionar regras sugeridas</button></div>` : ''}
+            <div class="sel-row"><button type="button" class="link" data-act="imp-marcar" data-v="novos">Marcar todos os novos</button><button type="button" class="link" data-act="imp-marcar" data-v="nenhum">Desmarcar todos</button></div>
+            <div class="group">${rows.map((r) => {
+                const t = r.tx;
+                const sign = t.type === 'transferencia' ? (t.dest === imp.accountId ? 1 : -1) : t.type === 'deposito' ? 1 : -1;
+                const sub = [C.fmtDate(t.date), esc(rowCounterpart(r)), rowCategoryText(r), t.paymentMethod ? esc(payLabel(t.paymentMethod)) : '']
+                    .filter(Boolean).join(' · ');
+                const dupChip = r.dup ? `<span class="chip ${r.dup.kind === 'possivel' ? 'warn' : 'muted'}">${DUP_TEXT[r.dup.kind]}${r.dup.tx ? ': ' + esc(r.dup.tx.description || '') + ' em ' + esc(C.fmtDate(r.dup.tx.date)) : ''}</span>` : '';
+                const transferChip = t.type === 'transferencia' ? `<span class="chip info">Transferência ${t.dest === imp.accountId ? 'de' : 'para'} ${esc(accName(t.dest === imp.accountId ? t.source : t.dest))}</span>` : '';
+                return `<div class="imp-row${r.include ? '' : ' off'}">
+                    <button type="button" class="imp-check" role="checkbox" aria-checked="${r.include}" aria-label="Importar ${esc(t.description)}" data-act="imp-toggle" data-k="${r.key}">${svg('<path d="M5 12.5l4.5 4.5L19 7.5"/>')}</button>
+                    <button type="button" class="imp-body" data-act="imp-editar" data-k="${r.key}">
+                        <span class="row-main"><span class="row-title">${esc(t.description)}</span><span class="row-sub wrap">${sub}</span>${dupChip}${transferChip}</span>
+                        <span class="amount ${sign < 0 ? 'neg' : 'pos'}">${sign < 0 ? MINUS : '+'}${money(t.amount)}</span>
+                    </button></div>`;
+            }).join('')}</div>
+            <div class="imp-bar"><button type="button" class="btn primary wide" data-act="imp-confirmar"${sel1.length ? '' : ' disabled'}>Importar ${sel1.length} lançamento${sel1.length === 1 ? '' : 's'}</button></div>`;
+        return {
+            title: 'Prévia da importação', body,
+            after: (root) => {
+                $('#imp-opts', root).addEventListener('change', async (e) => {
+                    const t = e.target;
+                    if (t.id === 'f-imp-account') {
+                        imp.accountId = t.value;
+                    } else if (t.id === 'f-imp-stmt') {
+                        imp.stmtIndex = +t.value;
+                        pickImportAccount(imp);
+                    } else if (t.id === 'f-imp-qifdate') {
+                        imp.qifOrder = t.value;
+                        imp.statements = I.parseQIF(imp.text, imp.qifOrder);
+                    } else if (t.id === 'f-imp-rules') {
+                        imp.opts.applyRules = t.checked;
+                    } else if (t.id === 'f-imp-duplines') {
+                        imp.opts.ignoreDuplicateLines = t.checked;
+                    } else {
+                        return;
+                    }
+                    await refreshPreview();
+                    render();
+                });
+            },
+        };
+    };
+
+    const impRow = (k) => ui.imp && ui.imp.rows ? ui.imp.rows.find((r) => r.key === +k) : null;
+
+    function impRowSheet(r) {
+        const imp = ui.imp;
+        const t = r.tx;
+        const counter = rowCounterpart(r);
+        const otherOwn = t.type === 'transferencia' ? (t.source === imp.accountId ? t.dest : t.source) : '';
+        const ownOpts = ownAccounts().filter((a) => a.id !== imp.accountId).map((a) => [a.id, a.name]);
+        openSheet({
+            title: 'Lançamento do extrato',
+            body: `<p class="muted">${esc(C.fmtDate(t.date))} · ${money(t.amount)}${r.item.description && r.item.description !== t.description ? ' · no banco: ' + esc(r.item.description) : ''}</p>
+                ${segmented('type', [['retirada', 'Despesa'], ['deposito', 'Receita'], ['transferencia', 'Transferência']], t.type)}
+                <div class="group form">
+                    ${sw('include', 'Importar este lançamento', r.include)}
+                    ${field('Descrição', inText('description', t.description))}
+                    ${field('Para', inText('d_dst', t.type === 'retirada' ? counter : '', 'list="dl-despesa"'), {cls: 'only-retirada'})}
+                    ${field('De', inText('r_src', t.type === 'deposito' ? counter : '', 'list="dl-receita"'), {cls: 'only-deposito'})}
+                    ${field('Outra conta', ownOpts.length ? sel('t_other', ownOpts, otherOwn) : '<span class="muted">Cadastre outra conta</span>', {cls: 'only-transferencia'})}
+                    ${field('Categoria', inText('category', t.categoryId && S.categories[t.categoryId] ? S.categories[t.categoryId].name : t.categoryName || '', 'list="dl-cat3" placeholder="Nenhuma"'))}
+                    ${field('Pagamento', sel('paymentMethod', payOptions(), t.paymentMethod || ''))}
+                </div>
+                ${datalist('dl-despesa', counterparties('despesa').map((a) => a.name))}
+                ${datalist('dl-receita', counterparties('receita').map((a) => a.name))}
+                ${datalist('dl-cat3', Object.values(S.categories).sort(byName).map((c) => c.name))}
+                ${r.ruleTitles.length ? `<p class="muted small">Regras aplicadas: ${esc(r.ruleTitles.join(', '))}.</p>` : ''}`,
+            init: (form) => bindTypeSwitch(form),
+            onSubmit: (form) => {
+                const type = val(form, 'type');
+                const out = r.item.amount < 0;
+                const acc = imp.accountId;
+                const n = Object.assign({}, t, {type, description: val(form, 'description').trim() || t.description, paymentMethod: val(form, 'paymentMethod') || null});
+                if (type === 'retirada') {
+                    Object.assign(n, {source: acc, dest: I.CP + (val(form, 'd_dst').trim() || 'Diversos')});
+                } else if (type === 'deposito') {
+                    Object.assign(n, {source: I.CP + (val(form, 'r_src').trim() || 'Diversos'), dest: acc});
+                } else {
+                    const other = val(form, 't_other');
+                    if (!other) {
+                        return 'Escolha a outra conta da transferência.';
+                    }
+                    Object.assign(n, out ? {source: acc, dest: other} : {source: other, dest: acc});
+                }
+                const catName = val(form, 'category').trim();
+                const found = Object.values(S.categories).find((c) => I.fold(c.name) === I.fold(catName));
+                n.categoryId = found ? found.id : null;
+                n.categoryName = found || !catName ? null : catName;
+                if (n.categoryId !== t.categoryId || n.categoryName !== t.categoryName) {
+                    r.catSource = catName ? 'manual' : null;
+                }
+                r.tx = n;
+                r.include = checked(form, 'include');
+                render();
+                return true;
+            },
+        });
+    }
+
+    function resolveCounterpart(id, type, touched) {
+        if (!String(id).startsWith(I.CP)) {
+            return id;
+        }
+        return ensureAccount(id.slice(I.CP.length), type === 'deposito' ? 'receita' : 'despesa', touched);
+    }
+
+    function commitImport() {
+        const imp = ui.imp;
+        const touched = new Set(['imports', 'importProfiles']);
+        const importId = C.newId();
+        let n = 0;
+        let skipped = 0;
+        for (const r of imp.rows) {
+            if (!r.include) {
+                continue;
+            }
+            const t = Object.assign({}, r.tx, {id: C.newId(), importId, createdAt: nowISO()});
+            t.source = resolveCounterpart(t.source, t.type, touched);
+            t.dest = resolveCounterpart(t.dest, t.type, touched);
+            if (!t.categoryId && t.categoryName) {
+                t.categoryId = ensureCategory(t.categoryName, touched);
+            }
+            delete t.categoryName;
+            if (!t.externalId) {
+                delete t.externalId;
+            }
+            const nt = C.normalizeTx(S, t);
+            if (C.validateTx(S, nt)) {
+                skipped++;
+                continue;
+            }
+            putTx(nt, null, touched);
+            n++;
+        }
+        S.imports[importId] = {
+            id: importId, date: today(), at: nowISO(), fileName: imp.fileName, format: imp.format, accountId: imp.accountId, count: n,
+        };
+        // Salva o mapeamento deste banco para a próxima vez.
+        if (imp.format === 'csv') {
+            const p = imp.csv.profile;
+            const header = p.hasHeader ? imp.csv.rows[p.skipRows || 0] : null;
+            const saved = Object.assign({}, p, {
+                id: p.id || C.newId(), kind: 'csv', name: String(p.name || '').trim() || imp.fileName,
+                signature: I.headerSignature(header || []), accountId: imp.accountId, updatedAt: nowISO(),
+            });
+            S.importProfiles[saved.id] = saved;
+        } else if (imp.format === 'ofx') {
+            const st = imp.statements[imp.stmtIndex];
+            const key = ofxKey(st);
+            const old = profileList('ofx').find((p) => p.key === key);
+            const name = st.card ? 'Cartão ' + String(st.accountId).slice(-4) : 'Conta ' + st.accountId + (st.bankId ? ' (banco ' + st.bankId + ')' : '');
+            const p = Object.assign({}, old || {id: C.newId(), name}, {kind: 'ofx', key, accountId: imp.accountId, updatedAt: nowISO()});
+            S.importProfiles[p.id] = p;
+        }
+        ui.imp = null;
+        commit(touched);
+        ui.stack = [{view: 'mais'}, {view: 'importar'}];
+        render();
+        window.scrollTo(0, 0);
+        toast(`${n} lançamento${n === 1 ? '' : 's'} importado${n === 1 ? '' : 's'}.` + (skipped ? ` ${skipped} com problema ficaram de fora.` : ''));
+    }
+
+    function addStarterRules() {
+        const touched = new Set(['rules', 'settings']);
+        let order = Math.max(0, ...Object.values(S.rules).map((r) => r.order || 0));
+        for (const r of I.STARTER_RULES) {
+            const catId = ensureCategory(r.category, touched);
+            const rule = {
+                id: C.newId(), title: r.title, active: true, strict: false, onUpdate: false, stopProcessing: false,
+                order: ++order, createdAt: nowISO(),
+                triggers: r.words.map((w) => ({type: 'descricao_contem', value: w})),
+                actions: [{type: 'definir_categoria', value: catId}],
+            };
+            S.rules[rule.id] = rule;
+        }
+        S.settings = Object.assign({}, S.settings, {starterRules: true});
+        commit(touched);
+        toast(`${I.STARTER_RULES.length} regras adicionadas. Edite-as em Mais → Regras.`);
+        if (ui.imp && ui.imp.rows) {
+            refreshPreview().then(render);
+        }
+    }
+
+    function importProfileSheet(p) {
+        openSheet({
+            title: p.kind === 'csv' ? 'Banco salvo (CSV)' : 'Conta do OFX',
+            body: `<div class="group form">${field('Nome', inText('name', p.name))}
+                ${field('Importar para', sel('accountId', ownAccounts().map((a) => [a.id, a.name]), p.accountId))}</div>
+                <p class="muted small">${p.kind === 'csv' ? 'Este mapeamento é usado sozinho quando o CSV tem as mesmas colunas.' : 'Arquivos OFX desta conta vão direto para a conta escolhida.'}</p>
+                <div class="btn-row"><button type="button" class="btn danger" data-del>Esquecer este banco</button></div>`,
+            init: (form, el) => {
+                $('[data-del]', form).addEventListener('click', () => {
+                    delete S.importProfiles[p.id];
+                    closeSheet(el);
+                    commit(new Set(['importProfiles']));
+                });
+            },
+            onSubmit: (form) => {
+                S.importProfiles[p.id] = Object.assign({}, p, {name: val(form, 'name').trim() || p.name, accountId: val(form, 'accountId')});
+                commit(new Set(['importProfiles']));
+                return true;
+            },
+        });
+    }
 
     // --------------------------------------------------------------- render
 
@@ -2621,6 +3111,57 @@
         'nova-regra': () => ruleSheet(null),
         'editar-regra': (d) => S.rules[d.id] && ruleSheet(S.rules[d.id]),
         exportar: () => exportBackup(),
+        'ir-importar': () => go('importar'),
+        'regras-sugeridas': () => addStarterRules(),
+        'perfil-importacao': (d) => S.importProfiles[d.id] && importProfileSheet(S.importProfiles[d.id]),
+        'imp-previa': async () => {
+            pickImportAccount(ui.imp);
+            await refreshPreview();
+            go('importarPrevia');
+        },
+        'imp-toggle': (d) => {
+            const r = impRow(d.k);
+            if (r) {
+                r.include = !r.include;
+                render();
+            }
+        },
+        'imp-editar': (d) => {
+            const r = impRow(d.k);
+            if (r) {
+                impRowSheet(r);
+            }
+        },
+        'imp-marcar': (d) => {
+            for (const r of ui.imp.rows) {
+                r.include = d.v === 'novos' ? !r.dup : false;
+            }
+            render();
+        },
+        'imp-confirmar': () => {
+            const n = ui.imp.rows.filter((r) => r.include).length;
+            confirmSheet({
+                title: 'Importar extrato',
+                message: `Importar ${n} lançamento${n === 1 ? '' : 's'} para ${accName(ui.imp.accountId)}? Você pode desfazer depois em Mais → Importar extrato.`,
+                confirmLabel: 'Importar', onConfirm: commitImport,
+            });
+        },
+        'desfazer-importacao': (d) => {
+            const x = S.imports[d.id];
+            const ids = Object.values(S.tx).filter((t) => t.importId === d.id).map((t) => t.id);
+            confirmSheet({
+                title: 'Desfazer importação',
+                message: `Apagar os ${ids.length} lançamentos importados de "${x ? x.fileName : ''}"? Lançamentos que você criou à mão não são afetados.`,
+                confirmLabel: 'Apagar lançamentos importados', destructive: true,
+                onConfirm: () => {
+                    const touched = new Set(['imports']);
+                    removeTx(ids, touched);
+                    delete S.imports[d.id];
+                    commit(touched);
+                    toast('Importação desfeita.');
+                },
+            });
+        },
         'apagar-tudo': () => confirmSheet({
             title: 'Apagar todos os dados',
             message: 'Isso apaga todas as contas, lançamentos e cadastros deste app. Faça um backup antes se quiser guardar alguma coisa. Não pode ser desfeito.',

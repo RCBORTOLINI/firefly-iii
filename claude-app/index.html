@@ -212,7 +212,7 @@ button.row:active, a.row:active, label.row:active { background: var(--press); }
 .small { font-size: 13px; }
 .center { text-align: center; }
 
-.btn { min-height: 44px; border-radius: var(--r); padding: 0 18px; font-size: 16px; font-weight: 600; border: 0; background: var(--card); color: var(--accent); }
+.btn { box-sizing: border-box; min-height: 44px; border-radius: var(--r); padding: 0 18px; font-size: 16px; font-weight: 600; border: 0; background: var(--card); color: var(--accent); }
 .btn.primary { background: var(--accent); color: var(--on-accent); }
 .btn.danger { color: var(--neg); }
 .btn.plain { background: transparent; padding: 0 4px; }
@@ -332,6 +332,37 @@ form[data-end="data"] .only-end-vezes, form[data-end="vezes"] .only-end-data { d
 .rule-val:empty { display: none; }
 .rule-line select, .rule-line input { width: 100%; min-width: 0; box-sizing: border-box; height: 38px; border: 0; border-radius: 8px; background: var(--card-2); padding: 0 10px; font-size: 16px; color: var(--fg); }
 
+/* Importação de extratos */
+.file-btn { display: grid; place-items: center; cursor: pointer; margin: 8px 0; }
+.small-btn { min-height: 32px; padding: 0 12px; font-size: 14px; background: var(--card-2); flex: none; }
+.banner.ok { background: var(--pos-soft); }
+.chip.warn { background: var(--warn-soft); color: var(--warn); }
+.cols { display: grid; gap: 10px; margin: 12px 0; }
+@media (min-width: 620px) { .cols { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.col-card { background: var(--card); border-radius: var(--r); padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.col-head { font-size: 14px; color: var(--fg-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.col-head b { color: var(--fg); }
+.col-samples { display: flex; flex-wrap: wrap; gap: 6px; font-size: 13px; min-width: 0; }
+.col-samples span { background: var(--card-2); border-radius: 6px; padding: 2px 8px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.col-samples i { color: var(--fg-3); }
+.col-card select { height: 40px; border: 0; border-radius: 8px; background: var(--card-2); padding: 0 10px; font-size: 16px; color: var(--accent); width: 100%; }
+.col-id { display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--fg-2); }
+.col-id input { width: 18px; height: 18px; accent-color: var(--accent); }
+.sel-row { display: flex; justify-content: space-between; gap: 12px; margin: 14px 2px 0; font-size: 15px; }
+.imp-row { display: flex; align-items: stretch; position: relative; }
+.imp-row + .imp-row::before { content: ""; position: absolute; top: 0; left: 52px; right: 0; height: 1px; background: var(--sep); transform: scaleY(.6); }
+.imp-check { flex: none; width: 52px; border: 0; background: none; display: grid; place-items: center; }
+.imp-check .ico { width: 24px; height: 24px; padding: 3px; border-radius: 50%; box-sizing: border-box; stroke-width: 2.6; color: var(--on-accent); background: var(--accent); }
+.imp-check[aria-checked="false"] .ico { color: transparent; background: transparent; box-shadow: inset 0 0 0 2px var(--fg-3); }
+.imp-body { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; border: 0; background: none; text-align: left; padding: 10px 14px 10px 0; color: inherit; }
+.imp-body:active { background: var(--press); }
+.imp-body .chip { margin-top: 4px; align-self: flex-start; white-space: normal; }
+.imp-row.off .imp-body { opacity: .5; }
+.row-sub.wrap { white-space: normal; }
+.imp-body .row-title { white-space: normal; overflow-wrap: anywhere; }
+.src { color: var(--fg-3); }
+.imp-bar { position: sticky; bottom: calc(76px + env(safe-area-inset-bottom, 0px)); padding: 12px 0 4px; background: linear-gradient(to bottom, transparent, var(--bg) 30%); z-index: 3; }
+
 #toast {
   position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(86px + env(safe-area-inset-bottom, 0px)); z-index: 60;
   background: var(--tip-bg); color: var(--tip-fg); border-radius: 12px; padding: 10px 16px; font-size: 14px; max-width: calc(100% - 40px); box-sizing: border-box; text-align: center; box-shadow: 0 6px 20px rgba(0, 0, 0, .2);
@@ -359,4 +390,5 @@ form[data-end="data"] .only-end-vezes, form[data-end="vezes"] .only-end-data { d
 <div id="toast" role="status" hidden></div>
 
 <script src="core.js"></script>
+<script src="importer.js"></script>
 <script src="app.js"></script>
